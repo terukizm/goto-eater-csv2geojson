@@ -70,6 +70,9 @@ def write_geojson(df: pd.DataFrame, outfile: str):
 
 
 if __name__ == "__main__":
+    # usage:
+    # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
+
     # GeoJSONのFeatureを作成するサンプル
     # addressからジオコーディングでlat,lngを取得
     a = {'address': '栃木県足利市上渋垂町字伊勢宮364-1',
@@ -93,12 +96,13 @@ if __name__ == "__main__":
     base = '27_osaka'   # インデントなしのデバッグ情報なしで9MBくらい、許容範囲？
     base = '11_saitama'
     base = '19_yamanashi'   # 軽い
+    base = '10_gunma'
     base = args.base
 
     # 読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
-    df = pd.read_csv(infile).fillna({'shop_name': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': 'その他'})
+    df = pd.read_csv(infile, dtype={'tel': str}).fillna({'shop_name': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': 'その他'})
 
     # 書き込み
     outfile = pathlib.Path.cwd() / f'../data/geojson/{base}_all.geojson'

@@ -38,14 +38,16 @@ def geocode(address: str):
     """
     return (lat, lng, debuginfo=(score, tail, name))
     """
-    geocoded = DAMS.geocode_simplify(address)
-    lat = round(geocoded['candidates'][0]['y'], 6)  # 国土地理院地図に合わせて6桁とした
-    lng = round(geocoded['candidates'][0]['x'], 6)
-    score = geocoded['score']
-    name = geocoded['candidates'][0]['name']
-    tail = geocoded['tail']  # ジオコーディングに寄与してない住所
-    # TODO: Error処理(raise GeocodeError)
-    return (lat, lng, (score, name, tail))
+    try:
+        geocoded = DAMS.geocode_simplify(address)
+        lat = round(geocoded['candidates'][0]['y'], 6)  # 国土地理院地図に合わせて6桁とした
+        lng = round(geocoded['candidates'][0]['x'], 6)
+        score = geocoded['score']
+        name = geocoded['candidates'][0]['name']
+        tail = geocoded['tail']  # ジオコーディングに寄与してない住所
+        return (lat, lng, (score, name, tail))
+    except Exception as e:
+        raise GeocodeError(e)
 
 def open_with_gsimap(lat, lng):
     """
