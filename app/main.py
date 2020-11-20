@@ -31,8 +31,13 @@ def _make_feature(row: pd.Series):
         logger.error("NormalizeError:")
         logger.error(row.to_dict())
         return False
-    except (GeocodeError) as e:
+    except GeocodeError as e:
         logger.error("GeocodeError:")
+        logger.error(row.to_dict())
+        return False
+    except Exception as e:
+        logger.error("Other Exception. Whats????")
+        logger.error(e)
         logger.error(row.to_dict())
         return False
 
@@ -69,6 +74,16 @@ def write_geojson(df: pd.DataFrame, outfile: str):
         json.dump(feature_collection, f, ensure_ascii=False, indent=indent)
 
 
+def write_converted_csv(df: pd.DataFrame, outfile: str):
+    """
+    CSVの内容(df形式)を元にFilter処理した後のCSVを出力
+    """
+    # GeoJSONのFeatureCollection要素, Feature要素を作成
+    # @see https://pypi.org/project/geojson/#featurecollection
+
+    # TODO: リファクタ
+    df.apply(_make_feature, axis=1).to_csv(outfile)
+
 if __name__ == "__main__":
     # usage:
     # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
@@ -102,16 +117,22 @@ if __name__ == "__main__":
     # 読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
-    df = pd.read_csv(infile, dtype={'tel': str}).fillna({'shop_name': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': 'その他'})
+    df = pd.read_csv(infile, dtype={'tel': str}) \
+        .fillna({'shop_name': '', 'address': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': 'その他'})
 
     # 書き込み
     outfile = pathlib.Path.cwd() / f'../data/geojson/{base}_all.geojson'
     logger.info(f'genre_name=all')
     write_geojson(df, outfile)
+    write_converted_csv(df, outfile)
 
     # ジャンル別で分割出力
     for genre_name in df['genre_name'].unique():
-        outfile = pathlib.Path.cwd() / f'../data/geojson/{base}_{genre_name}.geojson'
+        # FIXME・ジャンル名に/を入れてるやつの暫定対応
+        outfile1 = pathlib.Path.cwd() / '../data/geojson/{}_{}.geojson'.format(base, genre_name.replace('/', '／'))
+        outfile2 = pathlib.Path.cwd() / '../data/conv_csv/{}_{}.csv'.format(base, genre_name.replace('/', '／'))
         logger.info(f'genre_name={genre_name}')
-        write_geojson(df[df['genre_name'] == genre_name], outfile)
+        genred_df = df[df['genre_name'] == genre_name]
+        write_geojson(genred_df, outfile1)
+        write_converted_csv(genred_df, outfile2)
 
