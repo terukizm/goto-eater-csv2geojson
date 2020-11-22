@@ -74,16 +74,6 @@ def write_geojson(df: pd.DataFrame, outfile: str):
         json.dump(feature_collection, f, ensure_ascii=False, indent=indent)
 
 
-def write_converted_csv(df: pd.DataFrame, outfile: str):
-    """
-    CSVの内容(df形式)を元にFilter処理した後のCSVを出力
-    """
-    # GeoJSONのFeatureCollection要素, Feature要素を作成
-    # @see https://pypi.org/project/geojson/#featurecollection
-
-    # TODO: リファクタ
-    df.apply(_make_feature, axis=1).to_csv(outfile)
-
 if __name__ == "__main__":
     # usage:
     # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
@@ -117,22 +107,45 @@ if __name__ == "__main__":
     # 読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
-    df = pd.read_csv(infile, dtype={'tel': str}) \
+    df = pd.read_csv(infile, encoding="utf-8", \
+        dtype={'shop_name': str, 'tel': str}) \
         .fillna({'shop_name': '', 'address': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': 'その他'})
+
+    # 読み込んだデータの重複レコードチェック(店名 and 住所)
+    # 店名、住所を個別で実行することも可能だが、
+    # 以下の理由で店名、住所は単体だとduplicate判定できない場合がある
+    # ・同じ店名(例: 愛知県の「すずや」)
+    # ・同じショッピングモール内
+    # 入力ミスのパターンによっては十分とは言えないが、参考程度にチェックを入れておく
+    duplicated_records = df[df.duplicated(subset=['shop_name', 'address'])]
+    if not duplicated_records.empty:
+        logger.warn('以下のレコードが重複しています')
+        logger.warn(duplicated_records)
+
 
     # 書き込み
     outfile = pathlib.Path.cwd() / f'../data/geojson/{base}_all.geojson'
     logger.info(f'genre_name=all')
     write_geojson(df, outfile)
-    write_converted_csv(df, outfile)
 
     # ジャンル別で分割出力
-    for genre_name in df['genre_name'].unique():
-        # FIXME・ジャンル名に/を入れてるやつの暫定対応
-        outfile1 = pathlib.Path.cwd() / '../data/geojson/{}_{}.geojson'.format(base, genre_name.replace('/', '／'))
-        outfile2 = pathlib.Path.cwd() / '../data/conv_csv/{}_{}.csv'.format(base, genre_name.replace('/', '／'))
-        logger.info(f'genre_name={genre_name}')
-        genred_df = df[df['genre_name'] == genre_name]
-        write_geojson(genred_df, outfile1)
-        write_converted_csv(genred_df, outfile2)
+    # for genre_name in df['genre_name'].unique():
+    #     # FIXME・ジャンル名に/を入れてるやつの暫定対応
+    #     outfile = pathlib.Path.cwd() / '../data/geojson/{}_{}.geojson'.format(base, genre_name.replace('/', '／'))
+    #     logger.info(f'genre_name={genre_name}')
+    #     genred_df = df[df['genre_name'] == genre_name]
+    #     write_geojson(genred_df, outfile)
 
+    # "|"区切りの複数ジャンルに対応したジャンル別出力
+    # FIXME: 雑・ジャンル名に/を入れてるやつの暫定対応
+    genre_list = {}
+    for _, row in df.iterrows():
+        for genre in row['genre_name'].split('|'):
+            if not genre_list.get(genre):
+                genre_list[genre] = []
+            genre_list[genre].append(row)
+
+    for genre_name, row in genre_list.items():
+        outfile = pathlib.Path.cwd() / '../data/geojson/{}_{}.geojson'.format(base, genre_name.replace('/', '／'))
+        logger.info(f'genre_name={genre_name}')
+        write_geojson(pd.DataFrame(row), outfile)
