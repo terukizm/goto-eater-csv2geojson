@@ -1,5 +1,6 @@
 
 import pandas as pd
+import numpy as np
 from geojson import Feature, FeatureCollection, Point
 import argparse
 import logging
@@ -14,6 +15,17 @@ from urllib.parse import quote
 
 from util import geocode, normalize, normalize_genre_by_code, NormalizeError, GeocodeError
 from pydams import DAMS
+
+INPUT_CSV_ORDER = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'offical_page']
+NORMALIZED_CSV_ORDER = INPUT_CSV_ORDER + [
+    'lat',
+    'lng',
+    'normalized_address',
+    'genre_code',
+    '_ジオコーディングの結果スコア',
+    '_ジオコーディングで無視された住所情報(tail)',
+    '_ジオコーディング結果に紐づく住所情報(name)'
+]
 
 DAMS.init_dams()
 
@@ -45,33 +57,26 @@ def _normalize(row: pd.Series):
     ・カテゴリ名
     ・住所名
     """
-    shop_name = row['shop_name']
-    address = row['address']
     try:
+        address = row['address']
         normalized_address = normalize(address)
         lat, lng, _debug = geocode(address)
         genre_code = normalize_genre_by_code(row['genre_name'])
-    except NormalizeError as e:
-        logger.error("NormalizeError:")
-        logger.error(row.to_dict())
-        return False
-    except GeocodeError as e:
-        logger.error("GeocodeError:")
-        logger.error(row.to_dict())
-        return False
-    except Exception as e:
-        logger.error("Other Exception. Whats????")
-        logger.error(e)
-        logger.error(row.to_dict())
-        return False
 
-    row['lat'] = lat
-    row['lng'] = lng
-    row['genre_code'] = genre_code
-    row['normalized_address'] = normalized_address
-    row['_ジオコーディングの結果スコア'] = _debug[0]
-    row['_ジオコーディング結果に紐づく住所情報(name)'] = _debug[1]
-    row['_ジオコーディングで無視された住所情報(tail)'] = _debug[2]
+        row['lat'] = lat
+        row['lng'] = lng
+        row['genre_code'] = int(genre_code)
+        row['normalized_address'] = normalized_address
+        row['_ジオコーディングの結果スコア'] = _debug[0]
+        row['_ジオコーディング結果に紐づく住所情報(name)'] = _debug[1]
+        row['_ジオコーディングで無視された住所情報(tail)'] = _debug[2]
+        row['_ERROR'] = np.nan
+
+    except Exception as e:
+        # 例外(NormalizeError, GeocodeError)が発生した場合
+        name = e.__class__.__name__
+        row['_ERROR'] = name
+        logger.warn('{}: {}'.format(name, row.to_dict()))
 
     return row
 
@@ -92,39 +97,7 @@ def write_geojson(df: pd.DataFrame, outfile: str, debug=True):
             # 本番用はインデントなしにして、ファイルサイズを削減
             json.dump(feature_collection, f, ensure_ascii=False, separators=(',', ':'))
 
-if __name__ == "__main__":
-    # usage:
-    # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
-
-    # GeoJSONのFeatureを作成するサンプル
-    # addressからジオコーディングでlat,lngを取得
-    rawdata = pd.Series({'address': '栃木県足利市上渋垂町字伊勢宮364-1',
-        'genre_name': 'ラーメン・餃子',
-        'offical_page': 'https://www.kourakuen.co.jp/',
-        'shop_name': '幸楽苑 足利店',
-        'tel': '0284-70-5620',
-        'zip_code': '326-0335'})
-    normalized = _normalize(rawdata)
-    feature = _make_feature(normalized)
-
-    assert feature.properties['shop_name'] == '幸楽苑 足利店'
-    assert feature.properties['genre_code'] == 5
-    assert feature.properties['address'] == '栃木県足利市上渋垂町字伊勢宮364-1'
-    assert feature.geometry.type == 'Point'
-    assert feature.geometry.coordinates == [139.465439, 36.301109], "latlng did not match."
-
-    # TODO: もう少し真面目にやってもよい
-    parser = argparse.ArgumentParser(description='goto-eat-csv2geojson')
-    parser.add_argument('base', help='e.g.: 09_tochigi')
-    args = parser.parse_args()
-
-    base = '09_tochigi'
-    base = '27_osaka'   # インデントなしのデバッグ情報なしで9MBくらい、許容範囲？
-    base = '11_saitama'
-    base = '19_yamanashi'   # 軽い
-    base = '10_gunma'
-    base = args.base
-
+def main(base: str):
     # CSV読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
@@ -149,12 +122,20 @@ if __name__ == "__main__":
     outfile = pathlib.Path.cwd() / f'../data/normalized_csv/{base}.csv'
     logger.info(f'create normalized_csv... > {outfile}')
     df = df.apply(_normalize, axis=1)
-    df.to_csv(outfile, index=False)
+
+    # 正規化エラーになっているレコードの内容を {base}.error.txt として保存
+    error_df = df[df['_ERROR'].notnull()]
+    error_df.to_csv(outfile.parent / (outfile.name + '.error.txt'), index=False)
+
+    # それ以外をnormalized_csvとして保存(ERROR列は削除)
+    df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')
+    df['genre_code'] = df['genre_code'].astype(int)
+    df.to_csv(outfile, columns=NORMALIZED_CSV_ORDER, index=False)
     logger.info(f'success.')
 
     # 書き込み
 
-    # ディレクトリ準備
+    # 出力先の準備
     logger.info(f'create geojson...')
     output_dir = pathlib.Path.cwd() / f'../data/geojson/{base}'
     output_dir_debug = output_dir / '_debug'
@@ -166,6 +147,50 @@ if __name__ == "__main__":
         geojson_name = f'genre{genre_code}.geojson'
         write_geojson(df[df['genre_code'] == genre_code], outfile=output_dir / geojson_name, debug=False)
         write_geojson(df[df['genre_code'] == genre_code], outfile=output_dir_debug / geojson_name,)
+
+
+if __name__ == "__main__":
+    # usage:
+    # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
+
+    # GeoJSONのFeatureを作成するサンプル
+    # addressからジオコーディングでlat,lngを取得
+    rawdata = pd.Series({'address': '栃木県足利市上渋垂町字伊勢宮364-1',
+        'genre_name': 'ラーメン・餃子',
+        'offical_page': 'https://www.kourakuen.co.jp/',
+        'shop_name': '幸楽苑 足利店',
+        'tel': '0284-70-5620',
+        'zip_code': '326-0335'})
+    normalized = _normalize(rawdata)
+    logger.debug(normalized)
+    feature = _make_feature(normalized)
+
+    assert feature.properties['shop_name'] == '幸楽苑 足利店'
+    assert feature.properties['genre_code'] == 5
+    assert feature.properties['address'] == '栃木県足利市上渋垂町字伊勢宮364-1'
+    assert feature.geometry.type == 'Point'
+    assert feature.geometry.coordinates == [139.465439, 36.301109], "latlng did not match."
+
+    # TODO: もう少し真面目にやってもよい(後述の全件処理と一緒に)
+    parser = argparse.ArgumentParser(description='goto-eat-csv2geojson')
+    parser.add_argument('base', help='e.g.: 09_tochigi')
+    args = parser.parse_args()
+
+    base = '09_tochigi'
+    base = '27_osaka'   # インデントなしのデバッグ情報なしで9MBくらい、許容範囲？
+    base = '11_saitama'
+    base = '19_yamanashi'   # 軽い
+    base = '10_gunma'
+    base = args.base
+
+    # やる気のない全件処理
+    if base == 'all':
+        target = pathlib.Path.cwd() / f'../data/csv/'
+        for csv in list(target.glob('*.csv')):
+            main(csv.stem)
+            # break
+    else:
+        main(base)
 
 
     ## _all (必要ないかも), 複数ジャンル対応と合わせて後で消す
