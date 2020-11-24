@@ -1,6 +1,7 @@
 import re
 import webbrowser
 from pydams import DAMS
+from logzero import logger
 
 class NormalizeError(Exception):
     pass
@@ -64,9 +65,77 @@ def open_with_simple_geocode(address: str):
     # $ curl -sS -X POST "http://newspat.csis.u-tokyo.ac.jp/cgi-bin/simple_geocode.cgi" -d "charset=UTF8" -d "addr=栃木県佐野市大橋町3229-7" -d "geosys=world" -d "series=ADDRESS" -d "submit=検索" | tidy -q -i -xml -utf8
     pass
 
+def normalize_genre_by_code(genre_name: str):
+    """
+    ジャンル名を寄せる
+
+    難しかったもの
+    ・「旅館」「ホテル」「旅館・ホテル」あたりのジャンル。旅館=和食、ホテル=洋食としても「旅館・ホテル」というジャンルで登録されてるやつもあるので死
+    ・「そば(5:麺類)」と「焼きそば(10:その他)」「中華そば(4:中華ではない)」の関係性
+    ・富山県は「焼き鳥・焼肉」っていうカテゴリがあり、焼き鳥(1:居酒屋系)と焼肉(7:系)とまたがるのでどうしたもんかなという感じ
+    """
+    # 10. その他
+    if not genre_name:
+        return 10
+    if re.search(r'(その他|お好み焼き|焼きそば|たこ焼き|もんじゃ|イートイン|旅館|ホテル|飲食店)', genre_name):
+        # MEMO: 旅館・ホテルあたりは他に置くところがない。また「焼きそば」を「そば」より先にHitさせる必要がある
+        return 10
+
+    # 8: 'ファーストフード・ファミレス・食堂',
+    if re.search('(ハンバーガー|ファーストフード|ファストフード|ファミレス|レストラン|バイキング' +
+        '|定食|食堂|フライドチキン|から揚げ|ザンギ|サンドウィッチ|牛丼|軽食)', genre_name):
+        # MEMO: "ハンバーガー"が"バー"と誤Hitするので先に判定
+        return 8
+
+    # 7: 'ステーキ・焼肉・ホルモン・すき焼き・しゃぶしゃぶ',
+    if re.search(r'(焼肉|ステーキ|鉄板|ホルモン|すき焼き|しゃぶしゃぶ|ジンギスカン)', genre_name):
+        # 富山県の「焼き鳥・焼肉」というジャンルを焼肉側に倒すため
+        return 7
+
+    # 1: 居酒屋・バー・ダイニングバー・バル
+    if re.search(r'(居酒屋|バル|バー|酒場|ビヤホール|ビアレストラン|カクテル|ビール|ワイン|焼鳥|焼き鳥|串揚|パブ|スナック)', genre_name):
+        return 1
+    # 2: 和食
+    if re.search(r'(和食|和風|日本料理|郷土料理|沖縄|懐石|割烹|料亭|小料理|天ぷら|うなぎ|はも|うに|すっぽん|あなご|あんこう|川魚|' +
+        'とんかつ|かに料理|海鮮|おにぎり|釜飯|もつ焼|おでん|鍋|すし|寿司)', genre_name):
+        return 2
+    # 3: 洋食・フレンチ・イタリアン,
+    if re.search(r'洋食|欧風|オムライス|フランス|フレンチ|イタリア|ドイツ|イギリス|スペイン|西洋|ヨーロッパ|' +
+        'スパゲティ|パスタ|ピザ|ビストロ|アメリカ', genre_name):
+        return 3
+    # 5: 'うどん・そば・ラーメン・餃子・丼',
+    if re.search(r'ラーメン|そば|蕎麦|うどん|ちゃんぽん|麺|中華そば|餃子|丼', genre_name):
+        # MEMO: "中華そば"という文字列を"中華"より先にmatchさせないといけない
+        # さらに"焼きそば"という文字列は後でmatchせないといけない
+        # 餃子とか丼とかはジャンルとしてここなのかもわからん、何もかもわからない
+        return 5
+    # 4: 中華,
+    if re.search(r'(中華|中国|台湾)', genre_name):
+        return 4
+    # 6: カレー・アジア・エスニック・各国料理,
+    if re.search(r'(アジア|エスニック|韓国|無国籍|多国籍|南米|各国|創作|インド|カレー|メキシコ|アフリカ)', genre_name):
+        return 6
+    # 9: カフェ・スイーツ,
+    if re.search(r'(カフェ|パーラー|スイーツ|甘味|珈琲|紅茶|茶房|アイスクリーム)', genre_name):
+        return 9
+
+    # それ以外はその他に全部寄せる
+    # (例外投げて停止でもよいが、東京都とかしれっと新ジャンル追加されて落ちるので...)
+    logger.warning(f'未知のジャンル名: 「{genre_name}」')
+    return 10
+
+
 if __name__ == "__main__":
+    # ジャンルの正規化
+    assert normalize_genre_by_code('') == 10        # TODO: 定数化
+    assert normalize_genre_by_code(None) == 10
+    assert normalize_genre_by_code('焼きそば専門店') == 10
+    assert normalize_genre_by_code('ハンバーガーヒル') == 8
+    assert normalize_genre_by_code('フレンチ食堂') == 8
+    assert normalize_genre_by_code('創作居酒屋カフェ') == 1
+    assert normalize_genre_by_code('謎ジャンル') == 10
+
     # 住所文字列の正規化
-    assert normalize('堺市北区中百舌鳥町') == '東京都 府中市 清水が丘１丁目８−３'
     assert normalize('東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F') == '東京都 府中市 清水が丘１丁目８−３'
     assert normalize('東京都府中市清水が丘１丁目８−３京王リトナード東府中1F') == '東京都府中市清水が丘１丁目８−３'
     assert normalize('東京都府中市清水が丘一丁目八番地三号京王リトナード東府中1F') == '東京都府中市清水が丘一丁目八番地三号'
