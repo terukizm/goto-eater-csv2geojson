@@ -16,15 +16,12 @@ def normalize(address: str):
     """
     pydamsが正しくジオコーディング結果を返せる形式に住所文字列を正規化
      ・番地以下、ビル名を含むと誤爆することがあるので除去
-     ・区切りスペースはあってもなくてもOK
+     ・区切りスペースはあってもなくてもOK(どちらでもpydamsの結果には影響してないっぽい)
      ・丁目、番地は漢数字・半角数字・全角数字どれでもOK
      ・xx-xx形式でも、xx番地xx丁目形式でもOK
     """
     if not address:
         return ''
-
-    # 住所中のスペースは無しに倒す -> とりあえずどちらでもpydamsの結果には影響してないっぽい
-    # address = re.sub(r"\s+", '', address)
 
     # 番地部分だけ抽出
     m = re.search(regex, address)
@@ -112,7 +109,7 @@ def normalize_genre_by_code(genre_name: str):
         'スパゲティ|パスタ|ピザ|ビストロ|アメリカ|ロシア|地中海|ハワイアン', genre_name):
         return 3
     # 5: 'うどん・そば・ラーメン・餃子・丼',
-    if re.search(r'ラーメン|らーめん|つけめん|そば|蕎麦|うどん|ちゃんぽん|麺|中華そば|餃子|丼', genre_name):
+    if re.search(r'ラーメン|らーめん|つけめん|そば|蕎麦|うどん|ちゃんぽん|麺|麵|中華そば|餃子|丼', genre_name):
         # MEMO: "中華そば"という文字列を"中華"より先にmatchさせないといけない
         # さらに"焼きそば"という文字列は後でmatchせないといけない
         # 餃子とか丼とかはジャンルとしてここなのかもわからん、何もかもわからない
@@ -131,7 +128,7 @@ def normalize_genre_by_code(genre_name: str):
 
     # それ以外はその他に全部寄せる
     # (例外投げてもよいが、東京都とかしれっと新ジャンル追加されるので...)
-    logger.warning(f'未知のジャンル名: 「{genre_name}」')
+    logger.warn(f'未知のジャンル名: 「{genre_name}」')
     return 10
 
 

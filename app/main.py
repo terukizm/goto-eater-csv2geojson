@@ -1,20 +1,22 @@
-
 import pandas as pd
 import numpy as np
-from geojson import Feature, FeatureCollection, Point
-import argparse
 import logging
 import logzero
 from logzero import logger
+from pydams import DAMS
+from geojson import Feature, FeatureCollection, Point
 
+import argparse
 import csv
 import json
 import pathlib
+import shutil
 from collections import OrderedDict
 from urllib.parse import quote
 
 from util import geocode, normalize, normalize_genre_by_code, NormalizeError, GeocodeError
-from pydams import DAMS
+
+DAMS.init_dams()
 
 INPUT_CSV_ORDER = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'offical_page']
 NORMALIZED_CSV_ORDER = INPUT_CSV_ORDER + [
@@ -27,22 +29,23 @@ NORMALIZED_CSV_ORDER = INPUT_CSV_ORDER + [
     '_ジオコーディング結果に紐づく住所情報(name)'
 ]
 
-DAMS.init_dams()
-
 def _make_feature(row: pd.Series, debug=True):
     """
     GeoJSONのFeature要素(POINT限定)を作成
     @see https://pypi.org/project/geojson/#point
     """
     try:
+        # debugオプションの有無でprefixに'_'がついた項目を出し分け
         properties = OrderedDict(row) if debug \
             else OrderedDict({k: v for k, v in OrderedDict(row).items() if not k.startswith('_') })
+
+        # lat, lngはproperitesではなくgeometryに配置されるため
         lat = properties.pop('lat')
         lng = properties.pop('lng')
 
         # 補足情報を追加
-        google_map_args = properties['normalized_address'] + ' ' + properties['shop_name']
-        properties['GoogleMap'] = 'https://www.google.com/maps/search/?q=' + quote(google_map_args)
+        gmap_args = properties['normalized_address'] + ' ' + properties['shop_name']
+        properties['GoogleMap'] = 'https://www.google.com/maps/search/?q=' + quote(gmap_args)
         if debug:
             properties['_国土地理院地図のURL'] = f'https://maps.gsi.go.jp/#17/{lat}/{lng}/'
     except Exception as e:
@@ -72,11 +75,15 @@ def _normalize(row: pd.Series):
         row['_ジオコーディングで無視された住所情報(tail)'] = _debug[2]
         row['_ERROR'] = np.nan
 
-    except Exception as e:
+    except (NormalizeError, GeocodeError) as e:
         # 例外(NormalizeError, GeocodeError)が発生した場合
         name = e.__class__.__name__
         row['_ERROR'] = name
         logger.warn('{}: {}'.format(name, row.to_dict()))
+    except Exception as e:
+        # それ以外の例外が発生した場合にはコケさせる
+        logger.error('{}: {}'.format(name, row.to_dict()))
+        raise e
 
     return row
 
@@ -92,12 +99,13 @@ def write_geojson(df: pd.DataFrame, outfile: str, debug=True):
 
     with open(outfile, 'w', encoding='utf-8') as f:
         if debug:
+            # デバッグ用GeoJsonはpretty
             json.dump(feature_collection, f, ensure_ascii=False, indent=4)
         else:
-            # 本番用はインデントなしにして、ファイルサイズを削減
+            # 本番用GeoJsonはファイルサイズ削減のためインデントと改行なし
             json.dump(feature_collection, f, ensure_ascii=False, separators=(',', ':'))
 
-def main(base: str):
+def main(base: str, cleanup=True):
     # CSV読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
@@ -108,16 +116,18 @@ def main(base: str):
     # 読み込んだCSVデータの重複レコードチェック(店名 and 住所)
     # 店名、住所を個別で実行することも可能だが、以下の理由で店名、住所は単体だと重複判定できない場合がある
     # ・同じ店名の別の店(例: 愛知県の「すずや」)
-    # ・同じショッピングモール内にある別の店
+    # ・同じ住所(例: 同じショッピングモール内)にある別の店
     # 入力ミスのパターンによっては十分とは言えないが、参考程度にチェックを入れておく
     duplicated_records = df[df.duplicated(subset=['shop_name', 'address'])]
     if not duplicated_records.empty:
         logger.warn('以下のレコードが重複しています')
         logger.warn(duplicated_records)
+        # 重複行を消す
+        df.drop_duplicates(subset=['shop_name', 'address'], keep='last', inplace=True)
 
     # normalized_csvの作成
     # ・カテゴリ名
-    # ・住所名
+    # ・住所
     # 上記２つを正規化し、さらにデバッグ用情報を付与したもの
     outfile = pathlib.Path.cwd() / f'../data/normalized_csv/{base}.csv'
     logger.info(f'create normalized_csv... > {outfile}')
@@ -125,9 +135,10 @@ def main(base: str):
 
     # 正規化エラーになっているレコードの内容を {base}.error.txt として保存
     error_df = df[df['_ERROR'].notnull()]
-    error_df.to_csv(outfile.parent / (outfile.name + '.error.txt'), index=False)
+    if not error_df.empty:
+        error_df.to_csv(outfile.parent / (outfile.name + '.error.txt'), index=False)
 
-    # それ以外をnormalized_csvとして保存(ERROR列は削除)
+    # それ以外のレコードをnormalized_csvとして保存(_ERROR列は削除)
     df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')
     df['genre_code'] = df['genre_code'].astype(int)
     df.to_csv(outfile, columns=NORMALIZED_CSV_ORDER, index=False)
@@ -138,6 +149,8 @@ def main(base: str):
     # 出力先の準備
     logger.info(f'create geojson...')
     output_dir = pathlib.Path.cwd() / f'../data/geojson/{base}'
+    if cleanup:
+        shutil.rmtree(output_dir, ignore_errors=True)
     output_dir_debug = output_dir / '_debug'
     output_dir_debug.mkdir(parents=True, exist_ok=True)
 
@@ -191,26 +204,3 @@ if __name__ == "__main__":
             # break
     else:
         main(base)
-
-
-    ## _all (必要ないかも), 複数ジャンル対応と合わせて後で消す
-
-    # logzero.loglevel(logging.ERROR)  # allとそれ以外のジャンルとで重複してerrorが出るので
-    # outfile = pathlib.Path.cwd() / f'../data/geojson/{base}_all.geojson'
-    # logger.info(f'genre_name=all')
-    # write_geojson(df, outfile)
-    # logzero.loglevel(logging.INFO)
-
-    # # "|"区切りの複数ジャンルに対応したジャンル別出力
-    # # FIXME: 雑・ジャンル名に/を入れてるやつの暫定対応
-    # genre_list = {}
-    # for _, row in df.iterrows():
-    #     for genre in row['genre_name'].split('|'):
-    #         if not genre_list.get(genre):
-    #             genre_list[genre] = []
-    #         genre_list[genre].append(row)
-
-    # for genre_name, row in genre_list.items():
-    #     outfile = pathlib.Path.cwd() / '../data/geojson/{}_{}.geojson'.format(base, genre_name.replace('/', '／'))
-    #     logger.info(f'genre_name={genre_name}')
-    #     write_geojson(pd.DataFrame(row), outfile)
