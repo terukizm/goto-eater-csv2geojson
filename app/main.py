@@ -1,11 +1,3 @@
-import pandas as pd
-import numpy as np
-import logging
-import logzero
-from logzero import logger
-from pydams import DAMS
-from geojson import Feature, FeatureCollection, Point
-
 import argparse
 import csv
 import json
@@ -14,16 +6,27 @@ import shutil
 from collections import OrderedDict
 from urllib.parse import quote
 
-from util import geocode, normalize, normalize_genre_by_code, NormalizeError, GeocodeError
+import pandas as pd
+import numpy as np
+import logging
+import logzero
+from logzero import logger
+from pydams import DAMS
+from geojson import Feature, FeatureCollection, Point
+
+from util import geocode, normalize, NormalizeError, GeocodeError
+import genre
 
 DAMS.init_dams()
 
-INPUT_CSV_ORDER = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'offical_page']
-NORMALIZED_CSV_ORDER = INPUT_CSV_ORDER + [
+# @see goto_eat_scrapy.settings.FEED_EXPORT_FIELDS
+FEED_EXPORT_FIELDS = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'official_page', 'opening_hours', 'closing_day', 'area_name', 'detail_page']
+
+NORMALIZED_CSV_ORDER = FEED_EXPORT_FIELDS + [
     'lat',
     'lng',
-    'normalized_address',
-    'genre_code',
+    'normalized_address',           # ジオコーディングを通すために正規化された住所
+    'genre_code',                   # genre.classify()されたジャンルコード(1〜10)
     '_ジオコーディングの結果スコア',
     '_ジオコーディングで無視された住所情報(tail)',
     '_ジオコーディング結果に紐づく住所情報(name)'
@@ -64,7 +67,7 @@ def _normalize(row: pd.Series):
         address = row['address']
         normalized_address = normalize(address)
         lat, lng, _debug = geocode(address)
-        genre_code = normalize_genre_by_code(row['genre_name'])
+        genre_code = genre.classify(row['genre_name'])
 
         row['lat'] = lat
         row['lng'] = lng
@@ -79,7 +82,7 @@ def _normalize(row: pd.Series):
         # 例外(NormalizeError, GeocodeError)が発生した場合
         name = e.__class__.__name__
         row['_ERROR'] = name
-        logger.warn('{}: {}'.format(name, row.to_dict()))
+        logger.warning('{}: {}'.format(name, row.to_dict()))
     except Exception as e:
         # それ以外の例外が発生した場合にはコケさせる
         logger.error('{}: {}'.format(name, row.to_dict()))
@@ -96,7 +99,6 @@ def write_geojson(df: pd.DataFrame, outfile: str, debug=True):
     # @see https://pypi.org/project/geojson/#featurecollection
     features = df.apply(_make_feature, axis=1, debug=debug).tolist()
     feature_collection = FeatureCollection(features=features)
-
     with open(outfile, 'w', encoding='utf-8') as f:
         if debug:
             # デバッグ用GeoJsonはpretty
@@ -105,13 +107,15 @@ def write_geojson(df: pd.DataFrame, outfile: str, debug=True):
             # 本番用GeoJsonはファイルサイズ削減のためインデントと改行なし
             json.dump(feature_collection, f, ensure_ascii=False, separators=(',', ':'))
 
+
 def main(base: str, cleanup=True):
     # CSV読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
     df = pd.read_csv(infile, encoding="utf-8", \
         dtype={'shop_name': str, 'tel': str}) \
-        .fillna({'shop_name': '', 'address': '', 'offical_page': '', 'tel': '', 'zip_code': '', 'genre_name': ''})
+        .fillna({'shop_name': '', 'address': '', 'official_page': '', 'tel': '', 'zip_code': '',
+            'genre_name': '', 'opening_hours': '', 'closing_day': '', 'area_name': ''})
 
     # 読み込んだCSVデータの重複レコードチェック(店名 and 住所)
     # 店名、住所を個別で実行することも可能だが、以下の理由で店名、住所は単体だと重複判定できない場合がある
@@ -120,8 +124,8 @@ def main(base: str, cleanup=True):
     # 入力ミスのパターンによっては十分とは言えないが、参考程度にチェックを入れておく
     duplicated_records = df[df.duplicated(subset=['shop_name', 'address'])]
     if not duplicated_records.empty:
-        logger.warn('以下のレコードが重複しています')
-        logger.warn(duplicated_records)
+        logger.warning('以下のレコードが重複しています')
+        logger.warning(duplicated_records)
         # 重複行を消す
         df.drop_duplicates(subset=['shop_name', 'address'], keep='last', inplace=True)
 
@@ -164,13 +168,13 @@ def main(base: str, cleanup=True):
 
 if __name__ == "__main__":
     # usage:
-    # $ docker-compose run csv2geojson python /app/main.py 19_yamanashi
+    # $ docker-compose run csv2geojson python /app/main.py yamanashi
 
     # GeoJSONのFeatureを作成するサンプル
     # addressからジオコーディングでlat,lngを取得
     rawdata = pd.Series({'address': '栃木県足利市上渋垂町字伊勢宮364-1',
         'genre_name': 'ラーメン・餃子',
-        'offical_page': 'https://www.kourakuen.co.jp/',
+        'official_page': 'https://www.kourakuen.co.jp/',
         'shop_name': '幸楽苑 足利店',
         'tel': '0284-70-5620',
         'zip_code': '326-0335'})
@@ -188,12 +192,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='goto-eat-csv2geojson')
     parser.add_argument('base', help='e.g.: 09_tochigi')
     args = parser.parse_args()
-
-    base = '09_tochigi'
-    base = '27_osaka'   # インデントなしのデバッグ情報なしで9MBくらい、許容範囲？
-    base = '11_saitama'
-    base = '19_yamanashi'   # 軽い
-    base = '10_gunma'
     base = args.base
 
     # やる気のない全件処理
@@ -201,6 +199,5 @@ if __name__ == "__main__":
         target = pathlib.Path.cwd() / f'../data/csv/'
         for csv in list(target.glob('*.csv')):
             main(csv.stem)
-            # break
     else:
         main(base)
