@@ -42,11 +42,11 @@ def _make_feature(row: pd.Series, debug=True):
         properties = OrderedDict(row) if debug \
             else OrderedDict({k: v for k, v in OrderedDict(row).items() if not k.startswith('_') })
 
-        # lat, lngはproperitesではなくgeometryに配置されるため
+        # lat, lngは「properitesではなくgeometryに配置されるため
         lat = properties.pop('lat')
         lng = properties.pop('lng')
 
-        # 補足情報を追加
+        # その他の補足情報を追加
         gmap_args = properties['normalized_address'] + ' ' + properties['shop_name']
         properties['GoogleMap'] = 'https://www.google.com/maps/search/?q=' + quote(gmap_args)
         if debug:
@@ -112,10 +112,7 @@ def main(base: str, cleanup=True):
     # CSV読み込み
     logger.info(f'base={base}')
     infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
-    df = pd.read_csv(infile, encoding="utf-8", \
-        dtype={'shop_name': str, 'tel': str}) \
-        .fillna({'shop_name': '', 'address': '', 'official_page': '', 'tel': '', 'zip_code': '',
-            'genre_name': '', 'opening_hours': '', 'closing_day': '', 'area_name': ''})
+    df = pd.read_csv(infile, encoding="utf-8", dtype={'shop_name': str, 'tel': str}).fillna('')
 
     # 読み込んだCSVデータの重複レコードチェック(店名 and 住所)
     # 店名、住所を個別で実行することも可能だが、以下の理由で店名、住所は単体だと重複判定できない場合がある
@@ -140,7 +137,8 @@ def main(base: str, cleanup=True):
     # 正規化エラーになっているレコードの内容を {base}.error.txt として保存
     error_df = df[df['_ERROR'].notnull()]
     if not error_df.empty:
-        error_df.to_csv(outfile.parent / (outfile.name + '.error.txt'), index=False)
+        filename = outfile.parent.parent / 'error' / (outfile.name + '.error.txt')
+        error_df.to_json(filename, orient='records', lines=True, force_ascii=False)
 
     # それ以外のレコードをnormalized_csvとして保存(_ERROR列は削除)
     df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')
