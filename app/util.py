@@ -1,7 +1,6 @@
 import re
 import webbrowser
 from pydams import DAMS
-from logzero import logger
 
 class NormalizeError(Exception):
     pass
