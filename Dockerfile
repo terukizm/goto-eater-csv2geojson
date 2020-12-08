@@ -1,7 +1,7 @@
 # @see https://github.com/hottolink/pydams/blob/master/docker/Dockerfile
 # @see https://github.com/morita-tenpei/docker-DAMS-geocoder/blob/master/Dockerfile
 
-FROM python:3.6.10
+FROM python:3.6.10 as Builder
 ENV DAMS_VERSION=4.3.4
 
 RUN set -ex && \
@@ -30,6 +30,7 @@ RUN git clone https://github.com/hottolink/pydams.git /opt/pydams && cd /opt/pyd
 # pydamsの動作確認
 CMD python -c 'from pydams import DAMS;from pydams.helpers import pretty_print; DAMS.init_dams(); pretty_print(DAMS.geocode("東京都千代田区千代田1-1"))'
 
-# app用
-COPY app/requirements.txt /tmp
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# csv2geojson実行環境用のライブラリを追加
+WORKDIR /tmp
+COPY pyproject.toml poetry.lock ./
+RUN pip install --no-cache-dir poetry && poetry config virtualenvs.create false && poetry install
