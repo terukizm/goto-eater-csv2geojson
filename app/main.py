@@ -199,7 +199,6 @@ class Csv2GeoJSON:
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーコードとして処理)
         logger.info(f'normalize...')
         df = df.apply(_normalize, axis=1)
-        # df['genre_code'] = df['genre_code'].astype(int)
         self.error_df = df[df['_ERROR'].notnull()]                              # エラーレコードを取得
         self.normalized_df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')   # エラーレコード以外を取得、_ERROR列は削除
 
@@ -275,7 +274,7 @@ if __name__ == "__main__":
     assert feature.geometry.type == 'Point'
     assert feature.geometry.coordinates == [139.465439, 36.301109], "latlng did not match."
 
-    # TODO: もう少し真面目に、かつクラスにしてあげたい
+    # TODO: もう少し真面目にしてあげたい
     # argsもinとoutをそれぞれ指定してあげれば良さそう
     # 例: --infile data/infile/tochigi.csv --outdir data/outfile/tochigi/
     parser = argparse.ArgumentParser(description='goto-eat-csv2geojson')
@@ -288,14 +287,12 @@ if __name__ == "__main__":
         target = pathlib.Path.cwd() / f'../data/csv/'
         for infile in list(target.glob('*.csv')):
             output_dir = pathlib.Path.cwd() / f'../data/output/{infile.stem}'
-            parser = Csv2GeoJSON()
-            parser.parse(infile)
+            parser = Csv2GeoJSON(infile)
             parser.write_all(output_dir)
 
     else:
         infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
         output_dir = pathlib.Path.cwd() / f'../data/output/{base}'
-        parser = Csv2GeoJSON()
-        parser.parse(infile)
+        parser = Csv2GeoJSON(infile)
         parser.write_all(output_dir)
 
