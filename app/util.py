@@ -1,6 +1,7 @@
 import re
-import webbrowser
+
 from pydams import DAMS
+DAMS.init_dams()
 
 class NormalizeError(Exception):
     pass
@@ -47,31 +48,9 @@ def geocode(address: str):
     except Exception as e:
         raise GeocodeError(e)
 
-# あんまり使われなかった開発用メソッド
-#
-# def open_with_gsimap(lat, lng):
-#     """
-#     lat, lngを指定して地理院地図(電子国土Web)で開く
-#     """
-#     webbrowser.open(f"https://maps.gsi.go.jp/#18/{lat}/{lng}/&base=std&ls=std&disp=1&vs=c1j0h0k0l0u0t0z0r0s0m0f1")
-#
-# def open_with_googlemap(lat, lng):
-#     """
-#     lat, lngを指定してGoogleMapで開く
-#     """
-#     webbrowser.open(f"https://www.google.com/maps?q={lat},{lng}")
-#
-# def open_with_simple_geocode(address: str):
-#     """
-#     DAMSを提供しているCSISが提供しているシンプルジオコーディングサービスを使って、変換結果を確認する
-#     @see http://newspat.csis.u-tokyo.ac.jp/geocode/modules/geocode/index.php?content_id=4
-#     """
-#     # TODO: 下記相当のリクエストを投げる
-#     # $ curl -sS -X POST "http://newspat.csis.u-tokyo.ac.jp/cgi-bin/simple_geocode.cgi" -d "charset=UTF8" -d "addr=栃木県佐野市大橋町3229-7" -d "geosys=world" -d "series=ADDRESS" -d "submit=検索" | tidy -q -i -xml -utf8
-#     pass
 
 if __name__ == "__main__":
-    # pydams入ってないといけないので(本当はmockしてあげたりするとよい)
+    # pydams入ってないと動かないので(本当はmockしてあげたりするとよい)
     # $ docker-compose run csv2geojson python /app/util.py
 
     # 住所文字列の正規化
