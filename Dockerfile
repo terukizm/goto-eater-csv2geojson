@@ -34,3 +34,5 @@ CMD python -c 'from pydams import DAMS;from pydams.helpers import pretty_print; 
 WORKDIR /tmp
 COPY pyproject.toml poetry.lock ./
 RUN pip install --no-cache-dir poetry && poetry config virtualenvs.create false && poetry install
+
+WORKDIR /app

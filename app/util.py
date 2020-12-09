@@ -51,7 +51,7 @@ def geocode(address: str):
 
 if __name__ == "__main__":
     # pydams入ってないと動かないので(本当はmockしてあげたりするとよい)
-    # $ docker-compose run csv2geojson python /app/util.py
+    # $ docker-compose run csv2geojson python -m app.util
 
     # 住所文字列の正規化
     assert normalize('東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F') == '東京都 府中市 清水が丘１丁目８−３'
@@ -63,3 +63,5 @@ if __name__ == "__main__":
         assert False, '例外が発生しませんでした'
     except NormalizeError as e:
         pass
+
+    print('success!!')

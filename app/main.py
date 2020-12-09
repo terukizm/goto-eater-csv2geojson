@@ -13,8 +13,7 @@ import logzero
 from logzero import logger
 from geojson import Feature, FeatureCollection, Point
 
-from util import geocode, normalize, NormalizeError, GeocodeError
-import genre
+from app import util, genre
 
 # @see goto_eat_scrapy.settings.FEED_EXPORT_FIELDS
 FEED_EXPORT_FIELDS = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'official_page', 'opening_hours', 'closing_day', 'area_name', 'detail_page']
@@ -31,7 +30,7 @@ NORMALIZED_CSV_EXPORT_FIELDS = FEED_EXPORT_FIELDS + [
     '_dams_tail',
 ]
 
-def _make_feature(row: pd.Series, debug=True):
+def make_feature(row: pd.Series, debug=False):
     """
     GeoJSONのFeature要素(POINT限定)を作成
     @see https://pypi.org/project/geojson/#point
@@ -52,7 +51,7 @@ def _make_feature(row: pd.Series, debug=True):
     return Feature(geometry=Point(coords), properties=properties)
 
 
-def _normalize(row: pd.Series):
+def normalize(row: pd.Series):
     """
     ・カテゴリ名
     ・住所名
@@ -68,8 +67,8 @@ def _normalize(row: pd.Series):
 
         # 住所の正規化、ジオコーディング
         address = row['address']
-        normalized_address = normalize(address)
-        lat, lng, _debug = geocode(address)
+        normalized_address = util.normalize(address)
+        lat, lng, _debug = util.geocode(address)
 
         row['lat'] = lat
         row['lng'] = lng
@@ -84,14 +83,14 @@ def _normalize(row: pd.Series):
         row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
         row['_gsi_map_url'] = f'https://maps.gsi.go.jp/#17/{lat}/{lng}/'
 
-        ## -> 量が多いので一時的にコメントアウト…
+        ## -> 確認するには量が多いのでコメントアウト、参考にならなそうなら削除する
         # if row['_dams_score'] < 5:
         #     # MEMO: DAMSのscoreが4以下の場合、複数のジオコーディング結果が得られた可能性がある
         #     # @see http://newspat.csis.u-tokyo.ac.jp/geocode/modules/dams/index.php?content_id=4
         #     # GeocodeErrorとは違って一概に「だからlatlngの値がダメ」とはできないため、参考程度にログに出しておく
         #     logger.info('  (low dams_score): {}'.format(row.to_dict()))
 
-    except (NormalizeError, GeocodeError) as e:
+    except (util.NormalizeError, util.GeocodeError) as e:
         # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError)が発生した場合
         # dfの_ERROR列に発生したエラー名を追加、後から追えるようにしておく
         name = e.__class__.__name__
@@ -113,7 +112,7 @@ class Csv2GeoJSON:
     def _write_geojson(self, dest, df: pd.DataFrame, debug):
         # GeoJSONのFeatureCollection要素, Feature要素を作成
         # @see https://pypi.org/project/geojson/#featurecollection
-        features = df.apply(_make_feature, axis=1, debug=debug).tolist()
+        features = df.apply(make_feature, axis=1, debug=debug).tolist()
         feature_collection = FeatureCollection(features=features)
         logger.debug('  レコード数= {}'.format(len(df)))
         with open(dest, 'w', encoding='utf-8') as f:
@@ -126,6 +125,7 @@ class Csv2GeoJSON:
 
     def _parse(self):
         logger.debug(f'infile={self.infile}')
+
         # CSVの全カラムを文字列として読み込む
         # MEMO: 書式によってはtel, zip_codeなどがintで認識される(例: "09012345678"、書式は各都道府県のサイトに依存)
         # 基本的にcrawler側では書式変換せず、(必要であれば)csv2geojson側で書式変換を行う方針
@@ -148,7 +148,7 @@ class Csv2GeoJSON:
         # 正規化処理とジオコーディング
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーコードとして処理)
         logger.info(f'normalize...')
-        df = df.apply(_normalize, axis=1)
+        df = df.apply(normalize, axis=1)
         self.error_df = df[df['_ERROR'].notnull()]                              # エラーレコードを取得
         self.normalized_df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')   # エラーレコード以外を取得、_ERROR列は削除
 
@@ -183,7 +183,7 @@ class Csv2GeoJSON:
 
     def write_all(self, output_dir, cleanup=True):
         """
-        一括生成
+        各種成果物の一括生成
         """
         # 出力先の準備
         if cleanup:
@@ -201,7 +201,7 @@ class Csv2GeoJSON:
 
 if __name__ == "__main__":
     # usage:
-    # $ docker-compose run csv2geojson python /app/main.py --base yamanashi
+    # $ docker-compose run csv2geojson python -m app.main --target tochigi
 
     # GeoJSONのFeatureを作成するサンプル
     # addressからジオコーディングでlat,lngを取得
@@ -211,9 +211,8 @@ if __name__ == "__main__":
         'shop_name': '幸楽苑 足利店',
         'tel': '0284-70-5620',
         'zip_code': '326-0335'})
-    normalized = _normalize(rawdata)
-    logger.debug(normalized)
-    feature = _make_feature(normalized)
+    normalized = normalize(rawdata)
+    feature = make_feature(normalized)
 
     assert feature.properties['shop_name'] == '幸楽苑 足利店'
     assert feature.properties['genre_code'] == 5
@@ -222,24 +221,22 @@ if __name__ == "__main__":
     assert feature.geometry.coordinates == [139.465439, 36.301109], "latlng did not match."
 
     # TODO: もう少し真面目にしてあげたい
-    # argsもinとoutをそれぞれ指定してあげれば良さそう
-    # 例: --infile data/infile/tochigi.csv --outdir data/outfile/tochigi/
     parser = argparse.ArgumentParser(description='goto-eat-csv2geojson')
-    parser.add_argument('--base', help='例: tochigi')   # 個別指定オプション
+    parser.add_argument('--target', help='例: tochigi')   # 個別指定オプション
     args = parser.parse_args()
-    base = args.base
 
-    if not base:
-        # やる気のない全件処理(動作未確認)
-        target = pathlib.Path.cwd() / f'../data/csv/'
-        for infile in list(target.glob('*.csv')):
-            output_dir = pathlib.Path.cwd() / f'../data/output/{infile.stem}'
-            parser = Csv2GeoJSON(infile)
-            parser.write_all(output_dir)
+    input_dir = pathlib.Path(__file__).parent.parent / 'data' / 'input' / 'csvs'
+    output_base_dir = pathlib.Path(__file__).parent.parent / 'data' / 'output'
 
-    else:
-        infile = pathlib.Path.cwd() / f'../data/csv/{base}.csv'
-        output_dir = pathlib.Path.cwd() / f'../data/output/{base}'
-        parser = Csv2GeoJSON(infile)
-        parser.write_all(output_dir)
+    # --target 指定がなければ data/input/csvs/ 以下の*.csv全てを対象
+    pref_list = args.target.split(',') if args.target else [x.stem for x in input_dir.glob('*.csv')]
+    logger.info(f'pref_list = {pref_list}')
+    for pref_name in pref_list:
+        try:
+            parser = Csv2GeoJSON(input_dir / f'{pref_name}.csv')
+            parser.write_all(output_base_dir / pref_name)
+        except Exception as e:
+            logger.error(f'[{pref_name}] ERROR.')
+            logger.error(e)
 
+    logger.info('success!!')

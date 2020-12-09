@@ -121,3 +121,5 @@ if __name__ == "__main__":
         assert False, '例外が発生しませんでした'
     except GenreNotFoundError as e:
         pass
+
+    print('success!!')

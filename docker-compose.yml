@@ -5,5 +5,4 @@ services:
     build: .
     # command: /bin/bash -c "python /app/main.py"
     volumes:
-      - ./app:/app
-      - ./data:/data
+      - ./:/app
