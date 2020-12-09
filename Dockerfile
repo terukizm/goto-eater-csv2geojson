@@ -1,7 +1,7 @@
 # @see https://github.com/hottolink/pydams/blob/master/docker/Dockerfile
 # @see https://github.com/morita-tenpei/docker-DAMS-geocoder/blob/master/Dockerfile
 
-FROM python:3.6.10 as Builder
+FROM python:3.6.10
 ENV DAMS_VERSION=4.3.4
 
 RUN set -ex && \
