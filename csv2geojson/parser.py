@@ -201,8 +201,9 @@ class Csv2GeoJSON:
 
         self.write_normalized_csv(output_dir / 'normalized.csv')
         self.write_error_json(output_dir / '_error.json')
-        self.write_all_geojson(output_dir / 'all.geojson')
-        self.write_all_geojson(output_dir_debug / 'all.geojson', debug=True)
+        # MEMO: goto-eater-webでは特に必要なく、ファイルサイズもでかいので出力しないことにした
+        # self.write_all_geojson(output_dir / 'all.geojson')
+        # self.write_all_geojson(output_dir_debug / 'all.geojson', debug=True)
         self.write_genred_geojson(output_dir)
         self.write_genred_geojson(output_dir_debug, debug=True)
 
