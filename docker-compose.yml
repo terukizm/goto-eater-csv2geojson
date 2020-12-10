@@ -6,3 +6,5 @@ services:
     # command: /bin/bash -c "python /app/main.py"
     volumes:
       - ./:/app
+    environment:
+      TZ: Asia/Tokyo
