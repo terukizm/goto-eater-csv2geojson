@@ -5,6 +5,7 @@ from csv2geojson.parser import Csv2GeoJSON
 
 def main(input_dir, output_dir, pref_list: list):
     logger.info(f'pref_list = {pref_list}')
+    # MEMO: 並列処理してあげると多少早く終わるかも
     for pref in pref_list:
         try:
             parser = Csv2GeoJSON(input_dir / f'{pref}.csv')
@@ -27,6 +28,7 @@ if __name__ == "__main__":
 
     input_dir = pathlib.Path(__file__).parent / 'data' / 'input' / 'csvs'
     output_dir = pathlib.Path(__file__).parent / 'data' / 'output'
+
     # --target 指定がなければ data/input/csvs/ 以下の *.csv 全てを対象
     pref_list = args.target.split(',') if args.target else [x.stem for x in input_dir.glob('*.csv')]
 
