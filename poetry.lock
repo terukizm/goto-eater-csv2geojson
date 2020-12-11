@@ -50,6 +50,14 @@ pytz = ">=2017.2"
 test = ["pytest (>=4.0.2)", "pytest-xdist", "hypothesis (>=3.58)"]
 
 [[package]]
+name = "posuto"
+version = "0.2.1"
+description = "Japanese Postal Code Data"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.1"
 description = "Extensions to the standard Python datetime module"
@@ -79,7 +87,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.6.10"
-content-hash = "9bb7f35e6ef0fa4710e7bfce61a317f16d821f4b4d53545ee2d6478583b1ef95"
+content-hash = "e228e1e0d8ec23609c870cf99180ea9d6ea61388515750a2a5bcd4aa93e22ec3"
 
 [metadata.files]
 colorama = [
@@ -155,6 +163,9 @@ pandas = [
     {file = "pandas-1.1.5-cp39-cp39-win32.whl", hash = "sha256:c94ff2780a1fd89f190390130d6d36173ca59fcfb3fe0ff596f9a56518191ccb"},
     {file = "pandas-1.1.5-cp39-cp39-win_amd64.whl", hash = "sha256:edda9bacc3843dfbeebaf7a701763e68e741b08fccb889c003b0a52f0ee95782"},
     {file = "pandas-1.1.5.tar.gz", hash = "sha256:f10fc41ee3c75a474d3bdf68d396f10782d013d7f67db99c0efbfd0acb99701b"},
+]
+posuto = [
+    {file = "posuto-0.2.1.tar.gz", hash = "sha256:ca35f5657c5e9590fa21bf4fa4b44c5d83072983a9a5ad935d537236b705dd86"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.1.tar.gz", hash = "sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c"},

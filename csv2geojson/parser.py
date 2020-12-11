@@ -14,7 +14,7 @@ from geojson import Feature, FeatureCollection, Point
 
 from csv2geojson import util, genre
 
-def normalize_and_geocode(row: pd.Series):
+def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=False):
     """
     ジャンル名と住所を正規化し、ジオコーディングで取得した地理情報と合わせてGeoJSONの1Pointに相当するpd.Seriresを生成
     """
@@ -29,9 +29,20 @@ def normalize_and_geocode(row: pd.Series):
 
         # 住所の正規化、ジオコーディング
         address = row['address']
-        normalized_address = util.normalize_for_pydams(address)
-        lat, lng, _debug = util.geocode_with_pydams(address)
+        normalized_address = util.normalize_for_pydams(address, pref_name)
+        lat, lng, _debug = util.geocode_with_pydams(normalized_address)
 
+        # 郵便番号でのジオコーディング結果に対する正当性チェック(任意)
+        if zip_code_validation:
+            util.validate_by_zipcode(zip_code=row['zip_code'], address=normalized_address)
+        # MEMO: 簡易的なものであり、「愛知県名古屋市xxxx」を「名古屋xxxx」と誤入力されたことで、
+        # 千葉県成田市、新潟県佐渡市にある地名の「名古屋」のように、明らかに誤ったジオコーディング結果になっている場合に
+        # 検出できる、という程度のもの。posutoを用いているが、結果は県名までしか利用していない。
+        # (posuto.city, posuto.neighborhood の値も使えることは使えるが、pydamsが返す住所形式とposutoが返す結果の住所形式が異なることがあるため。
+        #  例: pydams = "栃木県/塩谷郡/高根沢町",  posuto = "栃木県/高根沢町"
+        # どちらも住所形式としては正しく、どちらも同じ住所を指すが、こういった郡とか字とかの正規化まで考えると頭がおかしくなってくるので)
+        # なお任意としているのは、posutoの実装が内部的にsqlite3を使っており、とにかく遅いため。
+        # (栃木の3500件程度で off=1min, on=4.3min くらいの差がつく)
         row['lat'] = lat
         row['lng'] = lng
         row['normalized_address'] = normalized_address
@@ -45,22 +56,17 @@ def normalize_and_geocode(row: pd.Series):
         row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
         row['_gsi_map_url'] = f'https://maps.gsi.go.jp/#17/{lat}/{lng}/'
 
-        ## -> 予想より量が多いのでコメントアウト、score値は参考にならなそうなら削除
-        # if row['_dams_score'] < 5:
-        #     # MEMO: DAMSのscoreが4以下の場合、複数のジオコーディング結果が得られた可能性がある
-        #     # @see http://newspat.csis.u-tokyo.ac.jp/geocode/modules/dams/index.php?content_id=4
-        #     # GeocodeErrorとは違って一概に「だからlatlngの値がダメ」とはできないため、参考程度にログに出しておく
-        #     logger.info('  (low dams_score): {}'.format(row.to_dict()))
-
-    except (util.NormalizeError, util.GeocodeError) as e:
-        # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError)が発生した場合
+    except (util.NormalizeError, util.GeocodeError, util.ZipCodeValidationError) as e:
+        # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError),
+        # 郵便番号チェックエラー(ZipCodeValidationError)が発生した場合、
         # dfの_ERROR列に発生したエラー名を追加、後から追えるようにしておく
         name = e.__class__.__name__
         row['_ERROR'] = name
         logger.warning('{}: {}'.format(name, row.to_dict()))
+        logger.warning(e)
     except Exception as e:
         # それ以外の例外が発生した場合にはコケさせる
-        logger.error('{}: {}'.format(name, row.to_dict()))
+        logger.error('{}: {}'.format(e.__class__.__name__, row.to_dict()))
         raise e
 
     return row
@@ -72,18 +78,18 @@ def make_feature(row: pd.Series, debug=False):
     """
     try:
         # debugオプションの有無でprefixに'_'がついた項目を出し分け
-        properties = OrderedDict(row) if debug \
+        props = OrderedDict(row) if debug \
             else OrderedDict({k: v for k, v in OrderedDict(row).items() if not k.startswith('_') })
 
         # lat, lngは「properites」ではなく「geometry」に配置
-        lat = properties.pop('lat')
-        lng = properties.pop('lng')
+        lat = props.pop('lat')
+        lng = props.pop('lng')
     except Exception as e:
-        logger.error(properties)
+        logger.error(props)
         raise e
 
     coords = (lng, lat) # MEMO: lng, latの順番に注意
-    return Feature(geometry=Point(coords), properties=properties)
+    return Feature(geometry=Point(coords), properties=props)
 
 def write_geojson(dest, df: pd.DataFrame, debug=False):
     """
@@ -118,10 +124,11 @@ class Csv2GeoJSON:
         '_dams_tail',
     ]
 
-    def __init__(self, src):
+    def __init__(self, src: pathlib.Path, zip_code_validation=False):
+        self.zip_code_validation = zip_code_validation
         self._parse(src)
 
-    def _parse(self, src):
+    def _parse(self, src: pathlib.Path):
         logger.debug(f'入力CSV={src}')
 
         # CSVの全カラムを文字列として読み込む
@@ -146,7 +153,7 @@ class Csv2GeoJSON:
         # 正規化処理とジオコーディング
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーレコードとして処理)
         logger.info(f'normalize...')
-        df = df.apply(normalize_and_geocode, axis=1)
+        df = df.apply(normalize_and_geocode, axis=1, pref_name=src.stem, zip_code_validation=self.zip_code_validation)
         self.error_df = df[df['_ERROR'].notnull()]                              # エラーレコードを取得
         self.normalized_df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')   # エラーレコード以外を取得、_ERROR列は削除
 
@@ -201,9 +208,8 @@ class Csv2GeoJSON:
 
         self.write_normalized_csv(output_dir / 'normalized.csv')
         self.write_error_json(output_dir / '_error.json')
-        # MEMO: goto-eater-webでは特に必要なく、ファイルサイズもでかいので出力しないことにした
-        # self.write_all_geojson(output_dir / 'all.geojson')
-        # self.write_all_geojson(output_dir_debug / 'all.geojson', debug=True)
+        self.write_all_geojson(output_dir / 'all.geojson')
+        self.write_all_geojson(output_dir_debug / 'all.geojson', debug=True)
         self.write_genred_geojson(output_dir)
         self.write_genred_geojson(output_dir_debug, debug=True)
 
@@ -215,23 +221,23 @@ if __name__ == "__main__":
     # GeoJSONのFeatureを作成するサンプル
     # addressからジオコーディングでlat,lngを取得
     rawdata = pd.Series({
-        'address': '栃木県足利市上渋垂町字伊勢宮364-1 なんとかビル1F',
+        'address': '足利市上渋垂町字伊勢宮364-1 なんとかビル1F',
         'genre_name': 'ラーメン・餃子',
         'official_page': 'https://www.kourakuen.co.jp/',
         'shop_name': '幸楽苑 足利店',
         'tel': '0284-70-5620',
         'zip_code': '326-0335',
     })
-    normalized_data = normalize_and_geocode(rawdata)
+    normalized_data = normalize_and_geocode(rawdata, pref_name='tochigi')
     feature = make_feature(normalized_data, debug=True)
 
     assert feature.properties['shop_name'] == '幸楽苑 足利店'
     assert feature.properties['genre_code'] == genre.GENRE_麺類
-    assert feature.properties['address'] == '栃木県足利市上渋垂町字伊勢宮364-1 なんとかビル1F'
+    assert feature.properties['address'] == '足利市上渋垂町字伊勢宮364-1 なんとかビル1F'
     assert feature.properties['normalized_address'] == '栃木県足利市上渋垂町字伊勢宮364-1'
     assert feature.properties['_dams_score'] == 5
     assert feature.properties['_dams_name'] == '栃木県足利市上渋垂町'
-    assert feature.properties['_dams_tail'] == '伊勢宮364-1 なんとかビル1F'
+    assert feature.properties['_dams_tail'] == '伊勢宮364-1'
     assert feature.geometry.type == 'Point'
     assert feature.geometry.coordinates == [139.465439, 36.301109], "latlng did not match."
 
