@@ -18,16 +18,36 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
     """
     ジャンル名と住所を正規化し、ジオコーディングで取得した地理情報と合わせてGeoJSONの1Pointに相当するpd.Seriresを生成
     """
+    # ジャンル再分類
     try:
-        # ジャンル再分類
-        try:
-            genre_code = genre.classify(row['genre_name'])
-            row['genre_code'] = genre_code
-        except genre.GenreNotFoundError as e:
-            logger.warning('{}: {}'.format(e, row.to_dict()))
-            row['genre_code'] = genre.GENRE_その他
+        genre_code = genre.classify(row['genre_name'])
+        row['genre_code'] = genre_code
+    except genre.GenreNotFoundError as e:
+        logger.warning('{}: {}'.format(e, row.to_dict()))
+        row['genre_code'] = genre.GENRE_その他
 
-        # 住所の正規化、ジオコーディング
+    # 公式サイトからlatlngが提供されている場合は優先してそちらを利用
+    # この場合は住所の正規化やジオコーディングを行う必要がない
+    if row['provided_lat'] and row['provided_lng']:
+        lat = float(row['provided_lat'])
+        lng = float(row['provided_lng'])
+        row['lat'] = lat
+        row['lng'] = lng
+        row['normalized_address'] = ''
+        row['_dams_score'] = ''
+        row['_dams_name'] = ''
+        row['_dams_tail'] = ''
+        row['_ERROR'] = np.nan
+
+        # その他の補足情報を追加
+        googlemap_q_string = '{} {}'.format(row['address'], row['shop_name'])
+        row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
+        row['_gsi_map_url'] = 'https://maps.gsi.go.jp/#17/{}/{}/'.format(lat, lng)
+
+        return row
+
+    # 住所の正規化、ジオコーディング
+    try:
         address = row['address']
         normalized_address = util.normalize_for_pydams(address, pref_name)
         lat, lng, _debug = util.geocode_with_pydams(normalized_address)
@@ -111,7 +131,7 @@ def write_geojson(dest, df: pd.DataFrame, debug=False):
 
 class Csv2GeoJSON:
     # @see goto_eat_scrapy.settings.FEED_EXPORT_FIELDS
-    FEED_EXPORT_FIELDS = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'official_page', 'opening_hours', 'closing_day', 'area_name', 'detail_page']
+    FEED_EXPORT_FIELDS = ['shop_name', 'address', 'tel', 'genre_name', 'zip_code', 'official_page', 'opening_hours', 'closing_day', 'area_name', 'detail_page', 'provided_lat', 'provided_lng']
     NORMALIZED_CSV_EXPORT_FIELDS = FEED_EXPORT_FIELDS + [
         'lat',
         'lng',
