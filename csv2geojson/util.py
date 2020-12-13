@@ -1,6 +1,7 @@
 import re
 import posuto
 from pydams import DAMS
+from functools import lru_cache
 DAMS.init_dams()
 
 class NormalizeError(Exception):
@@ -13,7 +14,7 @@ class ZipCodeValidationError(Exception):
 
 # 以下の正規表現に「無番地」を追加
 # @see https://qiita.com/shouta-dev/items/b87efc19e105045881de
-regex = r"([0-9０-９]+|[一二三四五六七八九十百千万]+)*(([0-9０-９]+|[一二三四五六七八九十百千万]+)|(丁目|丁|無番地|番地|番|号|-|‐|ー|−|の|東|西|南|北){1,2})*(([0-9０-９]+|[一二三四五六七八九十百千万]}+)|(丁目|丁|無番地|番地|番|号){1,2})"
+regex = r"([0-9０-９]+|[一二三四五六七八九十百千万]+)*(([0-9０-９]+|[一二三四五六七八九十百千万]+)|(丁目|丁|無番地|番地|番|号|-|‐|－|‑|ー|−|‒|–|—|―|ｰ|の|東|西|南|北){1,2})*(([0-9０-９]+|[一二三四五六七八九十百千万]}+)|(丁目|丁|無番地|番地|番|号){1,2})"
 
 def normalize_for_pydams(address: str, pref_name:str):
     """
@@ -29,7 +30,7 @@ def normalize_for_pydams(address: str, pref_name:str):
     # 番地部分だけ抽出
     m = re.search(regex, address)
     if not m:
-        raise NormalizeError(f'address={address}');
+        raise NormalizeError(f'  address={address}');
     addr2 = m.group()
     addr1 = address.split(addr2)[0]
 
@@ -116,13 +117,17 @@ def pref_name_ja_from_roman(pref_name: str):
     }
     return [k for k, v in prefs.items() if v == pref_name][0]
 
+@lru_cache(maxsize=None)
+def cached_posuto_pref(zip_code: str):
+    return posuto.get(zip_code).prefecture
+
 def validate_by_zipcode(zip_code: str, address: str):
     if not zip_code:
         return
     try:
-        pst = posuto.get(zip_code)
-        if not address.startswith(pst.prefecture):
-            raise ZipCodeValidationError(f'pref_by_zipcode is {pst.prefecture}, but address is {address}')
+        pref = cached_posuto_pref(zip_code)
+        if not address.startswith(pref):
+            raise ZipCodeValidationError(f'pref_by_zipcode is {pref}, but address is {address}')
     except KeyError as e:
         # MEMO: posutoのデータには存在しない(特殊な)郵便番号が指定されている場合がある
         # その場合は仕方ないのでバリデーション成功とする

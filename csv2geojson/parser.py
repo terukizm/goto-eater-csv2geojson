@@ -87,7 +87,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
     except Exception as e:
         # それ以外の例外が発生した場合にはコケさせる
         logger.error('{}: {}'.format(e.__class__.__name__, row.to_dict()))
-        raise e
+        raise
 
     return row
 
@@ -106,7 +106,7 @@ def make_feature(row: pd.Series, debug=False):
         lng = props.pop('lng')
     except Exception as e:
         logger.error(props)
-        raise e
+        raise
 
     coords = (lng, lat) # MEMO: lng, latの順番に注意
     return Feature(geometry=Point(coords), properties=props)
