@@ -6,7 +6,7 @@ from csv2geojson.parser import Csv2GeoJSON
 def main(input_dir, output_dir, pref_list: list, zip_code_validation=False):
     logger.info(f'pref_list = {pref_list}')
     # MEMO: 並列処理してあげると多少早く終わるかも
-    for pref in pref_list:
+    for pref in sorted(pref_list):
         try:
             src = input_dir / f'{pref}.csv'
             parser = Csv2GeoJSON(src, zip_code_validation)
