@@ -54,6 +54,9 @@ def geocode_with_pydams(normalized_address: str):
     lat = round(geocoded['candidates'][0]['y'], 6)  # 国土地理院地図に合わせて6桁とした
     lng = round(geocoded['candidates'][0]['x'], 6)
 
+    if lat == 0 and lng == 0:
+        raise GeocodeError('no latlng (Null Island)')
+
     score = geocoded['score']                   # 1〜5
     name = geocoded['candidates'][0]['name']    # ジオコーディングに寄与する住所
     tail = geocoded['tail']                     # ジオコーディングに寄与してない住所

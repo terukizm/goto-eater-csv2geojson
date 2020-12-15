@@ -60,7 +60,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
         # 検出できる、という程度のもの。posutoを用いているが、結果は県名までしか利用していない。
         # (posuto.city, posuto.neighborhood の値も使えることは使えるが、pydamsが返す住所形式とposutoが返す結果の住所形式が異なることがあるため。
         #  例: pydams = "栃木県/塩谷郡/高根沢町",  posuto = "栃木県/高根沢町"
-        # どちらも住所形式としては正しく、どちらも同じ住所を指すが、こういった郡とか字とかの正規化まで考えると頭がおかしくなってくるので)
+        # どちらも住所形式としては正しく、どちらも同じ住所を指すが、こういった郡とか字(大字)の正規化まで考えると頭がおかしくなってくるので)
         # なお任意としているのは、posutoの実装が内部的にsqlite3を使っており、とにかく遅いため。
         # (栃木の3500件程度で off=1min, on=4.3min くらいの差がつく)
         row['lat'] = lat
@@ -76,13 +76,23 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
         row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
         row['_gsi_map_url'] = f'https://maps.gsi.go.jp/#17/{lat}/{lng}/'
 
-    except (util.NormalizeError, util.GeocodeError, util.ZipCodeValidationError) as e:
-        # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError),
-        # 郵便番号チェックエラー(ZipCodeValidationError)が発生した場合、
+    except (util.NormalizeError, util.GeocodeError) as e:
+        # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError)が発生した場合、
         # dfの_ERROR列に発生したエラー名を追加、後から追えるようにしておく
         name = e.__class__.__name__
         row['_ERROR'] = name
         logger.warning('{}: {}'.format(name, row.to_dict()))
+        logger.warning(e)
+    except util.ZipCodeValidationError as e:
+        # 郵便番号チェックエラー(ZipCodeValidationError)が発生した場合、
+        # 以下のようなケースがあり、一概にエラーであると処理できないので、ログ出力だけとする
+        # 1. ジオコーディングに失敗しており、間違った住所で、latlngが求められている (正規化が不十分 or ジオコーディングに失敗している)
+        #   => このケースを想定して実装したが、ほとんどは入力データ形式が不十分なこと(郵便番号で補完できる区名や市名を省略しているなど)
+        #      に起因しており、かなり面倒くさい (対応する場合、正常データも含めて住所自体のきちんとした正規化が必要になってくる)
+        # 2. 郵便番号がそもそも間違っている (元データが悪い) => どうしようもない、住所の方が正しければ(まあ)問題はない
+        # 3. 郵便番号がそもそも「複数の都道府県にまたがる」郵便番号である (例: "498-0000") => 郵便番号の仕様、問題はない
+        name = e.__class__.__name__
+        logger.warning('📮 {}: {}'.format(name, row.to_dict()))
         logger.warning(e)
     except Exception as e:
         # それ以外の例外が発生した場合にはコケさせる
