@@ -64,6 +64,10 @@ def pref_name_ja_from_roman(pref_name: str):
     """
     例: pref_name_ja_from_roman(pref_name='tochigi') -> '栃木県'
     """
+    # FIXME: 静岡(青券)のクソ対応
+    if pref_name == 'shizuoka_blue':
+        return "静岡県"
+
     # なんかなかったっけと思って探したけど(pycountryとか)都道府県名まで入ってるのがなかったので脳死対応
     # jsかなんかのをコピペしているので許してくれ #FIXME
     prefs = {

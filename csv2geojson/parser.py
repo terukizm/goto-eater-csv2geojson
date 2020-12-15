@@ -87,6 +87,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
     except Exception as e:
         # それ以外の例外が発生した場合にはコケさせる
         logger.error('{}: {}'.format(e.__class__.__name__, row.to_dict()))
+        logger.exception(e)
         raise
 
     return row
