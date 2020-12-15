@@ -4,6 +4,7 @@ import pathlib
 import shutil
 from collections import OrderedDict
 from urllib.parse import quote
+import topojson as tp
 
 import pandas as pd
 import numpy as np
@@ -128,6 +129,17 @@ def write_geojson(dest, df: pd.DataFrame, debug=False):
         else:
             # 本番用GeoJSONはデータサイズ削減のため、minifyして出力
             json.dump(feature_collection, f, ensure_ascii=False, separators=(',', ':'))
+
+    dest = str(dest).replace('.geojson', '.top.json')
+    with open(dest, 'w', encoding='utf-8') as f:
+        if debug:
+            # デバッグ用GeoJSONは読みやすいように、prettyして出力
+            text = tp.Topology(feature_collection, prequantize=False).to_json()
+            json.dump(text, f, ensure_ascii=False, indent=4)
+        else:
+            # 本番用GeoJSONはデータサイズ削減のため、minifyして出力
+            text = tp.Topology(feature_collection, prequantize=False).to_json()
+            json.dump(text, f, ensure_ascii=False, separators=(',', ':'))
 
 
 class Csv2GeoJSON:
