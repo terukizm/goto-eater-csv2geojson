@@ -220,6 +220,9 @@ class Csv2GeoJSON:
         logger.info(f'create _error.json ...')
         logger.debug('  重複レコード数= {}'.format(len(self.duplicated_df)))
         logger.debug('  エラーレコード数= {}'.format(len(self.error_df)))
+        if len(self.duplicated_df) == 0 and len(self.error_df) == 0:
+            # 重複レコード、エラーコードともに存在しない場合、JSON出力しない
+            return
         data = {
             'duplicated': self.duplicated_df.fillna('').to_dict(orient='records'),
             'error': self.error_df.fillna('').to_dict(orient='records'),
