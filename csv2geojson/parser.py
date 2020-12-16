@@ -12,7 +12,9 @@ import logzero
 from logzero import logger
 from geojson import Feature, FeatureCollection, Point
 
-from csv2geojson import util, genre
+from csv2geojson import util, genre, exceptions
+
+# FIXME: やっつけ実装
 
 def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=False):
     """
@@ -23,82 +25,59 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
         genre_code = genre.classify(row['genre_name'])
         row['genre_code'] = genre_code
     except genre.GenreNotFoundError as e:
-        logger.warning('{}: {}'.format(e, row.to_dict()))
+        # ログに出すだけ
+        logger.info(e)
+        logger.info('🍴 {}: {}'.format(e, row.to_dict()))
         row['genre_code'] = genre.GENRE_その他
 
-    # 公式サイトからlatlngが提供されている場合は優先してそちらを利用
-    # この場合は住所の正規化やジオコーディングを行う必要がない
-    if row['provided_lat'] and row['provided_lng']:
-        lat = float(row['provided_lat'])
-        lng = float(row['provided_lng'])
-        row['lat'] = lat
-        row['lng'] = lng
-        row['normalized_address'] = ''
-        row['_dams_score'] = ''
-        row['_dams_name'] = ''
-        row['_dams_tail'] = ''
-        row['_ERROR'] = np.nan
-
-        # その他の補足情報を追加
-        googlemap_q_string = '{} {}'.format(row['address'], row['shop_name'])
-        row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
-        row['_gsi_map_url'] = 'https://maps.gsi.go.jp/#17/{}/{}/'.format(lat, lng)
-
-        return row
-
-    # 住所の正規化、ジオコーディング
+    # latlng取得
     try:
-        address = row['address']
-        normalized_address = util.normalize_for_pydams(address, pref_name)
-        lat, lng, _debug = util.geocode_with_pydams(normalized_address)
+        if row['provided_lat'] and row['provided_lng']:
+            # 公式サイトからlatlngが提供されている場合はそちらを優先して利用
+            # この場合は住所の正規化やジオコーディングを行う必要がない
+            lat = float(row['provided_lat'])
+            lng = float(row['provided_lng'])
+            row['normalized_address'] = ''
+            row['_dams_score'] = ''
+            row['_dams_name'] = ''
+            row['_dams_tail'] = ''
+            googlemap_q_string = '{} {}'.format(row['address'], row['shop_name'])
+        else:
+            # 住所からジオコーディングでlatlngを求める
+            address = row['address']
+            normalized_address = util.normalize_for_pydams(address, pref_name)
+            lat, lng, _dams_info = util.geocode_with_pydams(normalized_address)
+            row['normalized_address'] = normalized_address
+            row['_dams_score'] = _dams_info[0]
+            row['_dams_name'] = _dams_info[1]
+            row['_dams_tail'] = _dams_info[2]
+            googlemap_q_string = '{} {}'.format(normalized_address, row['shop_name'])
 
-        # 郵便番号でのジオコーディング結果に対する正当性チェック(任意)
-        if zip_code_validation:
-            util.validate_by_zipcode(zip_code=row['zip_code'], address=normalized_address)
-        # MEMO: 簡易的なものであり、「愛知県名古屋市xxxx」を「名古屋xxxx」と誤入力されたことで、
-        # 千葉県成田市、新潟県佐渡市にある地名の「名古屋」のように、明らかに誤ったジオコーディング結果になっている場合に
-        # 検出できる、という程度のもの。posutoを用いているが、結果は県名までしか利用していない。
-        # (posuto.city, posuto.neighborhood の値も使えることは使えるが、pydamsが返す住所形式とposutoが返す結果の住所形式が異なることがあるため。
-        #  例: pydams = "栃木県/塩谷郡/高根沢町",  posuto = "栃木県/高根沢町"
-        # どちらも住所形式としては正しく、どちらも同じ住所を指すが、こういった郡とか字(大字)の正規化まで考えると頭がおかしくなってくるので)
-        # なお任意としているのは、posutoの実装が内部的にsqlite3を使っており、とにかく遅いため。
-        # (栃木の3500件程度で off=1min, on=4.3min くらいの差がつく)
         row['lat'] = lat
         row['lng'] = lng
-        row['normalized_address'] = normalized_address
-        row['_dams_score'] = _debug[0]
-        row['_dams_name'] = _debug[1]
-        row['_dams_tail'] = _debug[2]
-        row['_ERROR'] = np.nan
-
-        # その他の補足情報を追加
-        googlemap_q_string = '{} {}'.format(normalized_address, row['shop_name'])
         row['google_map_url'] = 'https://www.google.com/maps/search/?q=' + quote(googlemap_q_string)
+        row['_ERROR'] = np.nan
+        row['_WARNING'] = np.nan
         row['_gsi_map_url'] = f'https://maps.gsi.go.jp/#17/{lat}/{lng}/'
 
-    except (util.NormalizeError, util.GeocodeError) as e:
+    except (exceptions.NormalizeError, exceptions.GeocodeError) as e:
+        # _ERROR
         # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError)が発生した場合、
         # dfの_ERROR列に発生したエラー名を追加、後から追えるようにしておく
         name = e.__class__.__name__
         row['_ERROR'] = name
-        logger.warning('{}: {}'.format(name, row.to_dict()))
         logger.warning(e)
-    except util.ZipCodeValidationError as e:
-        # 郵便番号チェックエラー(ZipCodeValidationError)が発生した場合、
-        # 以下のようなケースがあり、一概にエラーであると処理できないので、ログ出力だけとする
-        # 1. ジオコーディングに失敗しており、間違った住所で、latlngが求められている (正規化が不十分 or ジオコーディングに失敗している)
-        #   => このケースを想定して実装したが、ほとんどは入力データ形式が不十分なこと(郵便番号で補完できる区名や市名を省略しているなど)
-        #      に起因しており、かなり面倒くさい (対応する場合、正常データも含めて住所自体のきちんとした正規化が必要になってくる)
-        # 2. 郵便番号がそもそも間違っている (元データが悪い) => どうしようもない、住所の方が正しければ(まあ)問題はない
-        # 3. 郵便番号がそもそも「複数の都道府県にまたがる」郵便番号である (例: "498-0000") => 郵便番号の仕様、問題はない
+        logger.warning('⛄ {}: {}'.format(name, row.to_dict()))
+
+    # バリデーションチェック
+    try:
+        util.validate(row, zip_code_validation=zip_code_validation)
+    except (exceptions.ZipCodeValidationWarning, exceptions.ValidationWarning) as e:
+        # _WARNING (バリデーションエラー)
         name = e.__class__.__name__
-        logger.warning('📮 {}: {}'.format(name, row.to_dict()))
-        logger.warning(e)
-    except Exception as e:
-        # それ以外の例外が発生した場合にはコケさせる
-        logger.error('{}: {}'.format(e.__class__.__name__, row.to_dict()))
-        logger.exception(e)
-        raise
+        row['_WARNING'] = f'{name}({e})'
+        logger.info(e)
+        logger.info('❓ {}: {}'.format(name, row.to_dict()))
 
     return row
 
@@ -116,7 +95,7 @@ def make_feature(row: pd.Series, debug=False):
         lat = props.pop('lat')
         lng = props.pop('lng')
     except Exception as e:
-        logger.error(props)
+        logger.error(props, stack_info=True)
         raise
 
     coords = (lng, lat) # MEMO: lng, latの順番に注意
@@ -185,8 +164,11 @@ class Csv2GeoJSON:
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーレコードとして処理)
         logger.info(f'normalize...')
         df = df.apply(normalize_and_geocode, axis=1, pref_name=src.stem, zip_code_validation=self.zip_code_validation)
-        self.error_df = df[df['_ERROR'].notnull()]                              # エラーレコードを取得
-        self.normalized_df = df[df['_ERROR'].isnull()].drop(columns='_ERROR')   # エラーレコード以外を取得、_ERROR列は削除
+        self.error_df = df[df['_ERROR'].notnull()].drop(columns=['_WARNING'])   # エラーレコードを取得
+        self.warning_df = df[df['_WARNING'].notnull()].drop(columns=['_ERROR']) # ワーニングレコードを取得
+        # エラーレコード以外を取得、_ERRORと_WARNING列は削除
+        # MEMO: _WARNINGのデータについては_error.jsonに出すが、GeoJSONとnormalized_csvには出力する
+        self.normalized_df = df[df['_ERROR'].isnull()].drop(columns=['_ERROR', '_WARNING'])
 
     def write_normalized_csv(self, dest):
         """
@@ -220,13 +202,16 @@ class Csv2GeoJSON:
         logger.info(f'create _error.json ...')
         logger.debug('  重複レコード数= {}'.format(len(self.duplicated_df)))
         logger.debug('  エラーレコード数= {}'.format(len(self.error_df)))
-        if len(self.duplicated_df) == 0 and len(self.error_df) == 0:
-            # 重複レコード、エラーコードともに存在しない場合、JSON出力しない
+        logger.debug('  ワーニングレコード数= {}'.format(len(self.warning_df)))
+        if len(self.duplicated_df) == 0 and len(self.error_df) == 0 and len(self.warning_df) == 0:
+            # 重複、エラー、ワーニングの各レコードがすべて存在しない場合、JSON出力しない
+            logger.debug(f'👍 👍 {dest.stem} エラーレコードなし、すごい!!!!!!!!!!!!!!!!!!')
             return
-        data = {
+        data = OrderedDict({
             'duplicated': self.duplicated_df.fillna('').to_dict(orient='records'),
             'error': self.error_df.fillna('').to_dict(orient='records'),
-        }
+            'warning': self.warning_df.fillna('').to_dict(orient='records'),
+        })
         with open(dest, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)    # pretty
 

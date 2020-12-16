@@ -13,9 +13,9 @@ def main(input_dir, output_dir, pref_list: list, zip_code_validation=False):
             parser.write_all(output_dir / pref)
         except Exception as e:
             logger.error(f'[{pref}] ERROR.')
-            logger.error(e)
+            logger.error(e, stack_info=True)
 
-    logger.info('success!!')
+    logger.info('done.')
 
 
 if __name__ == "__main__":

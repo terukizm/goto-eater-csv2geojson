@@ -1,16 +1,85 @@
 import re
 import posuto
+import w3lib.html
+from logzero import logger
+import pandas as pd
 from pydams import DAMS
 from functools import lru_cache
+from validator_collection import checkers
+from .exceptions import NormalizeError, GeocodeError, ZipCodeValidationWarning, ValidationWarning
 DAMS.init_dams()
 
-class NormalizeError(Exception):
-    pass
-class GeocodeError(Exception):
-    pass
+@lru_cache(maxsize=None)
+def cached_posuto_pref(zip_code: str):
+    return posuto.get(zip_code).prefecture
 
-class ZipCodeValidationError(Exception):
-    pass
+def validate(row: pd.Series, zip_code_validation=False):
+    """
+    入力データに対する、お気持ち程度のバリデーションチェック
+    """
+    official_page = row['official_page']
+    if official_page and checkers.is_url(official_page) == False:
+        raise ValidationWarning('公式URL(officical_page)が不正です')
+    detail_page = row['detail_page']
+    if detail_page and checkers.is_url(detail_page) == False:
+        raise ValidationWarning('詳細ページ(detail_page)のURLが不正です')
+
+    # 郵便番号、電話番号の書式のバリデーション
+    # (厳密ではないし、有効性チェックでもない)
+    remove_char_regex = ' --‐　'    # (区切り文字適当)
+    tel = row['tel']
+    if tel and re.match(r'^0\d{9,10}$', re.sub(remove_char_regex, '', tel)):
+        raise ValidationWarning('電話番号(tel)の書式が不正です') # 0始まりの半角数字9〜10桁
+    zip_code = row['zip_code']
+    if zip_code and re.match(r'\d{7}$', re.sub(remove_char_regex, '', tel)):
+        raise ValidationWarning('郵便番号(zip_code)の書式が不正です') # 半角数字7桁
+
+    # HTMLタグが含まれてほしくないやつに含まれている
+    for target in ['shop_name', 'address', 'official_page', 'detail_page', 'opening_hours', 'closing_day', 'area_name']:
+        text = row.get(target)
+        if not text:
+            continue
+        if len(text) != len(w3lib.html.remove_tags(text)):
+            raise ValidationWarning(f'{target}にHTMLタグが含まれています')
+
+    # 郵便番号でのジオコーディング結果に対する正当性チェック(任意)
+    try:
+        zip_code = row['zip_code']
+        if not zip_code_validation or not zip_code:
+            return
+        pref = cached_posuto_pref(zip_code)
+    except KeyError as e:
+        # MEMO: posutoのデータには存在しない(特殊な)郵便番号が指定されている場合がある
+        # その場合は仕方ないのでバリデーション成功とする
+        return
+    except Exception as e:
+        # MEMO: '921-8045'のようにposutoの内部でコケる郵便番号がある
+        # FIXME: とりあえずスキップ…
+        logger.warning(e, stack_info=True)
+        logger.warning(f'unknown posuto error,,,, zip code={zip_code} ,,,, skip...')
+        return
+
+    norm_addr = row.get('normalized_address')
+    if norm_addr and not norm_addr.startswith(pref):
+        raise ValidationWarning(f'郵便番号から求められた都道府県は {pref} ですが、ジオコーディングされた住所は {norm_addr} です')
+
+    # MEMO: 簡易的なものであり、「愛知県名古屋市xxxx」を「名古屋xxxx」と誤入力されたことで、
+    # 千葉県成田市、新潟県佐渡市にある地名の「名古屋」のように、明らかに誤ったジオコーディング結果になっている場合に
+    # 検出できる、という程度のもの。posutoを用いているが、結果は県名までしか利用していない。
+    # (posuto.city, posuto. の値も使えることは使えるが、pydamsが返す住所形式とposutoが返す結果の住所形式が異なることがあるため。
+    #  例: pydams = "栃木県/塩谷郡/高根沢町",  posuto = "栃木県/高根沢町"
+    # どちらも住所形式としては正しく、どちらも同じ住所を指すが、こういった郡とか字(大字)の正規化まで考えると頭がおかしくなってくるので)
+    # なお任意としているのは、posutoの実装が内部的にsqlite3を使っており、とにかく遅いため。
+    # (栃木の3500件程度で off=1min, on=4.3min くらいの差がつく)
+
+    # 郵便番号チェックに失敗した場合、以下のようなケースがあり、一概にエラーであると処理できない
+    # 1. ジオコーディングに失敗しており、間違った住所で、latlngが求められている (正規化が不十分 or ジオコーディングに失敗している)
+    #   => このケースを想定して実装したが、ほとんどは入力データ形式が不十分なこと(郵便番号で補完できる区名や市名を省略しているなど)
+    #      に起因しており、かなり面倒くさい (対応する場合、正常データも含めて住所自体のきちんとした正規化が必要になってくる)
+    # 2. 郵便番号がそもそも間違っている (元データが悪い) => どうしようもない、住所の方が正しければ(まあ)問題はない
+    # 3. 郵便番号がそもそも「複数の都道府県にまたがる」郵便番号である (例: "498-0000") => 郵便番号の仕様、問題はない
+
+
 
 # 以下の正規表現に「無番地」を追加
 # @see https://qiita.com/shouta-dev/items/b87efc19e105045881de
@@ -124,21 +193,6 @@ def pref_name_ja_from_roman(pref_name: str):
     }
     return [k for k, v in prefs.items() if v == pref_name][0]
 
-@lru_cache(maxsize=None)
-def cached_posuto_pref(zip_code: str):
-    return posuto.get(zip_code).prefecture
-
-def validate_by_zipcode(zip_code: str, address: str):
-    if not zip_code:
-        return
-    try:
-        pref = cached_posuto_pref(zip_code)
-        if not address.startswith(pref):
-            raise ZipCodeValidationError(f'pref_by_zipcode is {pref}, but address is {address}')
-    except KeyError as e:
-        # MEMO: posutoのデータには存在しない(特殊な)郵便番号が指定されている場合がある
-        # その場合は仕方ないのでバリデーション成功とする
-        pass
 
 if __name__ == "__main__":
     # pydams入ってないと動かないので(本当はmockしてあげたりするとよい)
