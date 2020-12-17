@@ -24,14 +24,13 @@ def validate(row: pd.Series, zip_code_validation=False):
     if detail_page and checkers.is_url(detail_page) == False:
         raise ValidationWarning('詳細ページ(detail_page)のURLが不正です')
 
-    # 郵便番号、電話番号の書式のバリデーション
-    # (厳密ではないし、有効性チェックでもない)
-    remove_char_regex = ' --‐　'    # (区切り文字適当)
-    tel = row['tel']
-    if tel and re.match(r'^0\d{9,10}$', re.sub(remove_char_regex, '', tel)):
+    # 郵便番号、電話番号の書式のバリデーション(厳密ではない)
+    remove_char_regex = r'[ -‐　]'    # (区切り文字適当)
+    tel = re.sub(remove_char_regex, '', row['tel'])
+    if tel and not re.match(r'^0\d{9,10}$', tel):
         raise ValidationWarning('電話番号(tel)の書式が不正です') # 0始まりの半角数字9〜10桁
-    zip_code = row['zip_code']
-    if zip_code and re.match(r'\d{7}$', re.sub(remove_char_regex, '', tel)):
+    zip_code = re.sub(remove_char_regex, '', row['zip_code'])
+    if zip_code and not re.match(r'\d{7}$', zip_code):
         raise ValidationWarning('郵便番号(zip_code)の書式が不正です') # 半角数字7桁
 
     # HTMLタグが含まれてほしくないやつに含まれている
