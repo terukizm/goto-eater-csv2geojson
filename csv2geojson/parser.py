@@ -16,7 +16,7 @@ from csv2geojson import util, genre, exceptions
 
 # FIXME: やっつけ実装
 
-def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=False):
+def normalize_and_geocode(row: pd.Series, pref_name: str):
     """
     ジャンル名と住所を正規化し、ジオコーディングで取得した地理情報と合わせてGeoJSONの1Pointに相当するpd.Seriresを生成
     """
@@ -71,7 +71,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str, zip_code_validation=Fa
 
     # バリデーションチェック
     try:
-        util.validate(row, zip_code_validation=zip_code_validation)
+        util.validate(row)
     except (exceptions.ZipCodeValidationWarning, exceptions.ValidationWarning) as e:
         # _WARNING (バリデーションエラー)
         name = e.__class__.__name__
@@ -134,8 +134,7 @@ class Csv2GeoJSON:
         '_dams_tail',
     ]
 
-    def __init__(self, src: pathlib.Path, zip_code_validation=False):
-        self.zip_code_validation = zip_code_validation
+    def __init__(self, src: pathlib.Path):
         self._parse(src)
 
     def _parse(self, src: pathlib.Path):
@@ -163,7 +162,7 @@ class Csv2GeoJSON:
         # 正規化処理とジオコーディング
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーレコードとして処理)
         logger.info(f'normalize...')
-        df = df.apply(normalize_and_geocode, axis=1, pref_name=src.stem, zip_code_validation=self.zip_code_validation)
+        df = df.apply(normalize_and_geocode, axis=1, pref_name=src.stem)
         self.error_df = df[df['_ERROR'].notnull()].drop(columns=['_WARNING'])   # エラーレコードを取得
         self.warning_df = df[df['_WARNING'].notnull()].drop(columns=['_ERROR']) # ワーニングレコードを取得
         # エラーレコード以外を取得、_ERRORと_WARNING列は削除
