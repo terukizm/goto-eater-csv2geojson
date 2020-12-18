@@ -49,14 +49,14 @@ def validate(row: pd.Series, zip_code_validation=False):
         pref = cached_posuto_pref(zip_code)
     except KeyError as e:
         # MEMO: posutoのデータには存在しない(特殊な)郵便番号が指定されている場合がある
-        # その場合は仕方ないのでバリデーション成功とする
+        # いわゆる「大口事業所個別番号」というやつで、そういうのはどうしようもないのでバリデーション成功とする
+        logger.info(f'unknown zip code={zip_code} (たぶん「大口事業所個別番号」)')
         return
     except Exception as e:
-        # MEMO: '921-8045'のようにposutoの内部でコケる郵便番号がある
-        # FIXME: とりあえずスキップ…
+        # MEMO: その他特殊すぎる郵便番号などでposuto内部でエラーが起きた場合
         logger.warning(e, stack_info=True)
-        logger.warning(f'unknown posuto error,,,, zip code={zip_code} ,,,, skip...')
-        return
+        logger.warning(f'unknown posuto error zip code={zip_code}')
+        raise ValidationWarning(f'posutoでエラーになる郵便番号です(内部処理エラー)')
 
     norm_addr = row.get('normalized_address')
     if norm_addr and not norm_addr.startswith(pref):
