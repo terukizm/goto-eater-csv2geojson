@@ -99,7 +99,7 @@ test = ["pytest (>=4.0.2)", "pytest-xdist", "hypothesis (>=3.58)"]
 
 [[package]]
 name = "posuto"
-version = "0.2.1"
+version = "0.2.2"
 description = "Japanese Postal Code Data"
 category = "main"
 optional = false
@@ -279,7 +279,7 @@ pandas = [
     {file = "pandas-1.1.5.tar.gz", hash = "sha256:f10fc41ee3c75a474d3bdf68d396f10782d013d7f67db99c0efbfd0acb99701b"},
 ]
 posuto = [
-    {file = "posuto-0.2.1.tar.gz", hash = "sha256:ca35f5657c5e9590fa21bf4fa4b44c5d83072983a9a5ad935d537236b705dd86"},
+    {file = "posuto-0.2.2.tar.gz", hash = "sha256:f651d5fdc1f9759d8bfd91466d5efaa33646cdc0ae258c7fb9309931ec01922d"},
 ]
 pyrsistent = [
     {file = "pyrsistent-0.17.3.tar.gz", hash = "sha256:2e636185d9eb976a18a8a8e96efce62f2905fea90041958d8cc2a189756ebf3e"},
