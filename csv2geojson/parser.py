@@ -202,10 +202,6 @@ class Csv2GeoJSON:
         logger.debug('  重複レコード数= {}'.format(len(self.duplicated_df)))
         logger.debug('  エラーレコード数= {}'.format(len(self.error_df)))
         logger.debug('  ワーニングレコード数= {}'.format(len(self.warning_df)))
-        if len(self.duplicated_df) == 0 and len(self.error_df) == 0 and len(self.warning_df) == 0:
-            # 重複、エラー、ワーニングの各レコードがすべて存在しない場合、JSON出力しない
-            logger.debug(f'👍 👍 {dest.stem} エラーレコードなし、すごい!!!!!!!!!!!!!!!!!!')
-            return
         data = OrderedDict({
             'duplicated': self.duplicated_df.fillna('').to_dict(orient='records'),
             'error': self.error_df.fillna('').to_dict(orient='records'),
