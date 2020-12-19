@@ -65,7 +65,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str):
         # 住所の正規化エラー(NormalizeError), ジオコーディングエラー(GeocodeError)が発生した場合、
         # dfの_ERROR列に発生したエラー名を追加、後から追えるようにしておく
         name = e.__class__.__name__
-        row['_ERROR'] = name
+        row['_ERROR'] = f'{name}({e})'
         logger.warning(e)
         logger.warning('👁 {}: {}'.format(name, row.to_dict()))
 

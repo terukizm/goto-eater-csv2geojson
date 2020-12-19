@@ -42,7 +42,7 @@ def validate(row: pd.Series):
         if len(text) != len(w3lib.html.remove_tags(text)):
             raise ValidationWarning(f'{target}にHTMLタグが含まれています')
 
-    # 郵便番号でのジオコーディング結果に対する正当性チェック(任意)
+    # 郵便番号でのジオコーディング結果に対する正当性チェック
     try:
         zip_code = row['zip_code']
         if not zip_code:
@@ -51,12 +51,12 @@ def validate(row: pd.Series):
     except KeyError as e:
         # MEMO: posutoのデータには存在しない(特殊な)郵便番号が指定されている場合がある
         # いわゆる「大口事業所個別番号」というやつで、そういうのはどうしようもないのでバリデーション成功とする
-        logger.info(f'unknown zip code={zip_code} (たぶん「大口事業所個別番号」)')
+        logger.info(f'不明な郵便番号です (「大口事業所個別番号」かも？) : zip code={zip_code}')
         return
     except Exception as e:
         # MEMO: その他特殊すぎる郵便番号などでposuto内部でエラーが起きた場合
         logger.warning(e, stack_info=True)
-        logger.warning(f'unknown posuto error zip code={zip_code}')
+        logger.warning(f'unknown posuto error, zip code={zip_code}')
         raise ValidationWarning(f'posutoでエラーになる郵便番号です(内部処理エラー)')
 
     norm_addr = row.get('normalized_address')
@@ -97,7 +97,7 @@ def normalize_for_pydams(address: str, pref_name:str):
     # 番地部分だけ抽出
     m = re.search(regex, address)
     if not m:
-        raise NormalizeError(f'  address={address}');
+        raise NormalizeError(f'住所の正規化に失敗しました。 address={address}');
     addr2 = m.group()
     addr1 = address.split(addr2)[0]
 
@@ -116,13 +116,13 @@ def geocode_with_pydams(normalized_address: str):
     # @see http://newspat.csis.u-tokyo.ac.jp/geocode/modules/dams/index.php?content_id=4
     geocoded = DAMS.geocode_simplify(normalized_address)
     if not geocoded:
-        raise GeocodeError('no geocode')
+        raise GeocodeError('ジオコーディングの結果がありせんでした。(内部エラー)')
 
     lat = round(geocoded['candidates'][0]['y'], 6)  # 国土地理院地図に合わせて6桁とした
     lng = round(geocoded['candidates'][0]['x'], 6)
 
     if lat == 0 and lng == 0:
-        raise GeocodeError('no latlng (Null Island)')
+        raise GeocodeError('ジオコーディング結果がlat=0, lng=0(Null島)を示しています。')
 
     score = geocoded['score']                   # 1〜5
     name = geocoded['candidates'][0]['name']    # ジオコーディングに寄与する住所
