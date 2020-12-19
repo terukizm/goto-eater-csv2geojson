@@ -13,6 +13,7 @@ geojson = "^2.5.0"
 posuto = "^0.2.1"
 validator-collection = "^1.5.0"
 w3lib = "^1.22.0"
+python-dotenv = "^0.15.0"
 
 [tool.poetry.dev-dependencies]
 

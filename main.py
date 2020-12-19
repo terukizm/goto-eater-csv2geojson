@@ -1,10 +1,20 @@
+import os
+import logging
+import logzero
+from distutils.util import strtobool
 import argparse
 import pathlib
 from logzero import logger
 from csv2geojson.parser import Csv2GeoJSON
 
 def main(input_dir, output_dir, pref_list: list):
-    logger.info(f'pref_list = {pref_list}')
+    # 雑にログ出力設定
+    # MEMO: 開発時はdocker-compose.ymlからEnvでLOGGER_DEBUG=Trueを指定
+    # 運用時は_error.jsonを見ろって感じなのでDebug出力なし
+    logzero.loglevel(logging.WARNING)
+    if strtobool(os.getenv('LOGGER_DEBUG')):
+        logzero.loglevel(logging.DEBUG)
+
     # MEMO: 並列処理してあげると多少早く終わるかも
     for pref in sorted(pref_list):
         try:
@@ -14,8 +24,6 @@ def main(input_dir, output_dir, pref_list: list):
         except Exception as e:
             logger.error(f'[{pref}] ERROR.')
             logger.error(e, stack_info=True)
-
-    logger.info('done.')
 
 
 if __name__ == "__main__":
@@ -33,5 +41,7 @@ if __name__ == "__main__":
     # --target 指定がなければ data/input/csvs/ 以下の *.csv 全てを対象
     pref_list = args.target.split(',') if args.target else [x.stem for x in input_dir.glob('*.csv')]
 
+    print(f'pref_list = {pref_list}')
     main(input_dir, output_dir, pref_list)
+    print(f'done.')
 

@@ -8,3 +8,4 @@ services:
       - ./:/app
     environment:
       TZ: Asia/Tokyo
+      LOGGER_DEBUG: "True"

@@ -33,7 +33,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str):
     # latlng取得
     try:
         if row['provided_lat'] and row['provided_lng']:
-            # 公式サイトからlatlngが提供されている場合はそちらを優先して利用
+            # 公式サイトからlatlngが提供されている場合はそちらを優先して利用(千葉、神奈川、滋賀など)
             # この場合は住所の正規化やジオコーディングを行う必要がない
             lat = float(row['provided_lat'])
             lng = float(row['provided_lng'])
@@ -67,7 +67,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str):
         name = e.__class__.__name__
         row['_ERROR'] = name
         logger.warning(e)
-        logger.warning('⛄ {}: {}'.format(name, row.to_dict()))
+        logger.warning('👁 {}: {}'.format(name, row.to_dict()))
 
     # バリデーションチェック
     try:
