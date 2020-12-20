@@ -12,7 +12,7 @@ def main(input_dir, output_dir, pref_list: list):
     # MEMO: 開発時はdocker-compose.ymlからEnvでLOGGER_DEBUG=Trueを指定
     # 運用時は_error.jsonを見ろって感じなのでDebug出力なし
     logzero.loglevel(logging.WARNING)
-    if strtobool(os.getenv('LOGGER_DEBUG')):
+    if strtobool(os.getenv('LOGGER_DEBUG', 'False')):
         logzero.loglevel(logging.DEBUG)
 
     # MEMO: 並列処理してあげると多少早く終わるかも
