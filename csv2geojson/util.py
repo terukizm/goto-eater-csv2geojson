@@ -26,7 +26,7 @@ def validate(row: pd.Series):
         raise ValidationWarning('詳細ページ(detail_page)のURLが不正です')
 
     # 郵便番号、電話番号の書式のバリデーション(厳密ではない)
-    remove_char_regex = r'[ -‐　]'    # (区切り文字適当)
+    remove_char_regex = r'[ －-‐　]'    # (区切り文字適当)
     tel = re.sub(remove_char_regex, '', row['tel'])
     if tel and not re.match(r'^0\d{9,10}$', tel):
         raise ValidationWarning('電話番号(tel)の書式が不正です') # 0始まりの半角数字9〜10桁
