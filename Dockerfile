@@ -5,7 +5,7 @@ FROM python:3.6.10
 ENV DAMS_VERSION=4.3.4
 
 RUN set -ex \
-  && apt-get update && apt-get install -y git wget curl build-essential \
+  && apt-get update && apt-get install -y git wget curl build-essential jq \
   && pip install -U pip && pip install Cython --no-cache-dir \
   && rm -rf /var/lib/apt/lists/*
 
