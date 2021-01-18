@@ -32,5 +32,5 @@ multi_line_output = 3
 [tool.taskipy.tasks]
 format = "task black && task isort && task autoflake"
 black = "black ."
-isort = "isort --sl ./*.py"
+isort = "isort ./*.py"
 autoflake = "autoflake -ri --remove-all-unused-imports --ignore-init-module-imports --remove-unused-variables ."
