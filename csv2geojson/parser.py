@@ -4,12 +4,12 @@ import shutil
 from collections import OrderedDict
 from urllib.parse import quote
 
-import pandas as pd
 import numpy as np
-from logzero import logger
+import pandas as pd
 from geojson import Feature, FeatureCollection, Point
+from logzero import logger
 
-from csv2geojson import util, genre, exceptions
+from csv2geojson import exceptions, genre, util
 
 # FIXME: やっつけ実装
 

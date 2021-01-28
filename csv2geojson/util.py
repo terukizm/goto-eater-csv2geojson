@@ -1,16 +1,14 @@
 import re
+from functools import lru_cache
+
+import pandas as pd
 import posuto
 import w3lib.html
 from logzero import logger
-import pandas as pd
 from pydams import DAMS
-from functools import lru_cache
 from validator_collection import checkers
-from .exceptions import (
-    NormalizeError,
-    GeocodeError,
-    ValidationWarning,
-)
+
+from .exceptions import GeocodeError, NormalizeError, ValidationWarning
 
 DAMS.init_dams()
 
