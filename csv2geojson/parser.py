@@ -53,7 +53,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str):
 
         row["lat"] = lat
         row["lng"] = lng
-        row["google_map_url"] = "https://www.google.com/maps/search/?q=" + quote(
+        row["google_map_url"] = "https://www.google.com/maps/search/?api=1&query=" + quote(
             googlemap_q_string
         )
         row["_ERROR"] = np.nan
