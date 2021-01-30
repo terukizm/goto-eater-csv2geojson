@@ -74,9 +74,7 @@ def validate(row: pd.Series):
 
     norm_addr = row.get("normalized_address")
     if norm_addr and not norm_addr.startswith(pref):
-        raise ValidationWarning(
-            f"郵便番号から求められた都道府県は {pref} ですが、ジオコーディングされた住所は {norm_addr} です"
-        )
+        raise ValidationWarning(f"郵便番号から求められた都道府県は {pref} ですが、ジオコーディングされた住所は {norm_addr} です")
 
     # MEMO: 簡易的なものであり、「愛知県名古屋市xxxx」を「名古屋xxxx」と誤入力されたことで、
     # 千葉県成田市、新潟県佐渡市にある地名の「名古屋」のように、明らかに誤ったジオコーディング結果になっている場合に
@@ -214,17 +212,10 @@ if __name__ == "__main__":
     # $ docker-compose run csv2geojson python -m csv2geojson.util
 
     # 住所文字列の正規化
-    assert (
-        normalize_for_pydams("東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F") == "東京都 府中市 清水が丘１丁目８−３"
-    )
-    assert (
-        normalize_for_pydams("府中市 清水が丘１丁目８−３ 京王リトナード東府中1F", pref_name="東京都")
-        == "東京都 府中市 清水が丘１丁目８−３"
-    )
+    assert normalize_for_pydams("東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F") == "東京都 府中市 清水が丘１丁目８−３"
+    assert normalize_for_pydams("府中市 清水が丘１丁目８−３ 京王リトナード東府中1F", pref_name="東京都") == "東京都 府中市 清水が丘１丁目８−３"
     assert normalize_for_pydams("東京都府中市清水が丘１丁目８−３京王リトナード東府中1F") == "東京都府中市清水が丘１丁目８−３"
-    assert (
-        normalize_for_pydams("東京都府中市清水が丘一丁目八番地三号京王リトナード東府中1F") == "東京都府中市清水が丘一丁目八番地三号"
-    )
+    assert normalize_for_pydams("東京都府中市清水が丘一丁目八番地三号京王リトナード東府中1F") == "東京都府中市清水が丘一丁目八番地三号"
     assert normalize_for_pydams("東京都新宿区四谷1丁目無番地四ツ谷駅の中の自販機の前") == "東京都新宿区四谷1丁目無番地"
 
     try:

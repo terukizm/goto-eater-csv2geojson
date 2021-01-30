@@ -53,9 +53,7 @@ def normalize_and_geocode(row: pd.Series, pref_name: str):
 
         row["lat"] = lat
         row["lng"] = lng
-        row["google_map_url"] = "https://www.google.com/maps/search/?api=1&query=" + quote(
-            googlemap_q_string
-        )
+        row["google_map_url"] = "https://www.google.com/maps/search/?api=1&query=" + quote(googlemap_q_string)
         row["_ERROR"] = np.nan
         row["_WARNING"] = np.nan
         row["_gsi_map_url"] = f"https://maps.gsi.go.jp/#17/{lat}/{lng}/"
@@ -92,9 +90,7 @@ def make_feature(row: pd.Series, debug=False):
         props = (
             OrderedDict(row)
             if debug
-            else OrderedDict(
-                {k: v for k, v in OrderedDict(row).items() if not k.startswith("_")}
-            )
+            else OrderedDict({k: v for k, v in OrderedDict(row).items() if not k.startswith("_")})
         )
 
         # lat, lngは「properites」ではなく「geometry」に配置
@@ -176,35 +172,25 @@ class Csv2GeoJSON:
         if not duplicated_records.empty:
             # 重複行の削除
             ## MEMO: データ重複は(クローリングに実装ミスがなければ)公式サイト側の問題なので、重複削除したあとに処理を続行
-            df.drop_duplicates(
-                subset=["shop_name", "address"], keep="last", inplace=True
-            )
+            df.drop_duplicates(subset=["shop_name", "address"], keep="last", inplace=True)
         self.duplicated_df = duplicated_records
 
         # 正規化処理とジオコーディング
         # (失敗した場合は_ERROR列に値が入るので、その行はエラーレコードとして処理)
         logger.info(f"normalize...")
         df = df.apply(normalize_and_geocode, axis=1, pref_name=src.stem)
-        self.error_df = df[df["_ERROR"].notnull()].drop(
-            columns=["_WARNING"]
-        )  # エラーレコードを取得
-        self.warning_df = df[df["_WARNING"].notnull()].drop(
-            columns=["_ERROR"]
-        )  # ワーニングレコードを取得
+        self.error_df = df[df["_ERROR"].notnull()].drop(columns=["_WARNING"])  # エラーレコードを取得
+        self.warning_df = df[df["_WARNING"].notnull()].drop(columns=["_ERROR"])  # ワーニングレコードを取得
         # エラーレコード以外を取得、_ERRORと_WARNING列は削除
         # MEMO: _WARNINGのデータについては_error.jsonに出すが、GeoJSONとnormalized_csvには出力する
-        self.normalized_df = df[df["_ERROR"].isnull()].drop(
-            columns=["_ERROR", "_WARNING"]
-        )
+        self.normalized_df = df[df["_ERROR"].isnull()].drop(columns=["_ERROR", "_WARNING"])
 
     def write_normalized_csv(self, dest):
         """
         正規化、地理情報等を付与したCSVを出力
         """
         logger.info("create normalized_csv ...")
-        self.normalized_df.to_csv(
-            dest, columns=self.NORMALIZED_CSV_EXPORT_FIELDS, index=False
-        )
+        self.normalized_df.to_csv(dest, columns=self.NORMALIZED_CSV_EXPORT_FIELDS, index=False)
         logger.debug("  レコード数={}".format(len(self.normalized_df)))
 
     def write_all_geojson(self, dest, debug=False):
@@ -221,11 +207,7 @@ class Csv2GeoJSON:
         for genre_code in sorted(self.normalized_df["genre_code"].unique()):
             outfile = output_dir / f"genre{genre_code}.geojson"
             df = self.normalized_df[self.normalized_df["genre_code"] == genre_code]
-            logger.info(
-                "create genre{}_geojson {} ...".format(
-                    genre_code, "<_debug> " if debug else ""
-                )
-            )
+            logger.info("create genre{}_geojson {} ...".format(genre_code, "<_debug> " if debug else ""))
             write_geojson(outfile, df, debug)
 
     def write_error_json(self, dest):

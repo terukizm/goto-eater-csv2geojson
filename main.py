@@ -42,11 +42,7 @@ if __name__ == "__main__":
     output_dir = pathlib.Path(__file__).parent / "data" / "output"
 
     # --target 指定がなければ data/input/csvs/ 以下の *.csv 全てを対象
-    pref_list = (
-        args.target.split(",")
-        if args.target
-        else [x.stem for x in input_dir.glob("*.csv")]
-    )
+    pref_list = args.target.split(",") if args.target else [x.stem for x in input_dir.glob("*.csv")]
 
     print(f"pref_list = {pref_list}")
     main(input_dir, output_dir, pref_list)
