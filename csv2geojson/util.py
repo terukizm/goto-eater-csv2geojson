@@ -94,7 +94,7 @@ def validate(row: pd.Series):
 
 # 以下の正規表現に「無番地」を追加
 # @see https://qiita.com/shouta-dev/items/b87efc19e105045881de
-regex = r"([0-9０-９]+|[一二三四五六七八九十百千万]+)*(([0-9０-９]+|[一二三四五六七八九十百千万]+)|(丁目|丁|無番地|番地|番|号|-|‐|－|‑|ー|−|‒|–|—|―|ｰ|の|東|西|南|北){1,2})*(([0-9０-９]+|[一二三四五六七八九十百千万]}+)|(丁目|丁|無番地|番地|番|号){1,2})"
+regex = r"([0-9０-９]+|[一二三四五六七八九十百千万]+)*(([0-9０-９]+|[一二三四五六七八九十百千万]+)|(丁目|丁|無番地|番地|番|号|-|の|東|西|南|北){1,2})*(([0-9０-９]+|[一二三四五六七八九十百千万]}+)|(丁目|丁|無番地|番地|番|号){1,2})"
 
 
 def normalize_for_pydams(address: str, pref_name: str):
@@ -109,6 +109,7 @@ def normalize_for_pydams(address: str, pref_name: str):
         return ""
 
     # 番地部分だけ抽出
+    address = re.sub("[-‐－‑ー−‒–—―ｰ]", "-", address)
     m = re.search(regex, address)
     if not m:
         raise NormalizeError(f"住所の正規化に失敗しました。 address={address}")
@@ -212,14 +213,14 @@ if __name__ == "__main__":
     # $ docker-compose run csv2geojson python -m csv2geojson.util
 
     # 住所文字列の正規化
-    assert normalize_for_pydams("東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F") == "東京都 府中市 清水が丘１丁目８−３"
-    assert normalize_for_pydams("府中市 清水が丘１丁目８−３ 京王リトナード東府中1F", pref_name="東京都") == "東京都 府中市 清水が丘１丁目８−３"
-    assert normalize_for_pydams("東京都府中市清水が丘１丁目８−３京王リトナード東府中1F") == "東京都府中市清水が丘１丁目８−３"
-    assert normalize_for_pydams("東京都府中市清水が丘一丁目八番地三号京王リトナード東府中1F") == "東京都府中市清水が丘一丁目八番地三号"
-    assert normalize_for_pydams("東京都新宿区四谷1丁目無番地四ツ谷駅の中の自販機の前") == "東京都新宿区四谷1丁目無番地"
+    assert normalize_for_pydams("東京都 府中市 清水が丘１丁目８−３ 京王リトナード東府中1F", pref_name="tokyo") == "東京都 府中市 清水が丘１丁目８-３"
+    assert normalize_for_pydams("府中市 清水が丘１丁目８−３ 京王リトナード東府中1F", pref_name="tokyo") == "東京都府中市 清水が丘１丁目８-３"
+    assert normalize_for_pydams("東京都府中市清水が丘１丁目８−３京王リトナード東府中1F", pref_name="tokyo") == "東京都府中市清水が丘１丁目８-３"
+    assert normalize_for_pydams("東京都府中市清水が丘一丁目八番地三号京王リトナード東府中1F", pref_name="tokyo") == "東京都府中市清水が丘一丁目八番地三号"
+    assert normalize_for_pydams("東京都新宿区四谷1丁目無番地四ツ谷駅の中の自販機の前", pref_name="tokyo") == "東京都新宿区四谷1丁目無番地"
 
     try:
-        normalize_for_pydams("東京都新宿区")
+        normalize_for_pydams("東京都新宿区", pref_name="tokyo")
         assert False, "例外が発生しませんでした"
     except NormalizeError:
         pass
